@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+
+# Output
+output/
+*.docx
+!tests/fixtures/*.docx
+
+# Logs
+*.log
+logs/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive Config (API keys, personal settings)
+config/settings.json
+config/profiles/*.json
+
+# IDE & Tool configs
+.claude/
+.trae/
+
+# Release builds
+release/*.zip
+
+# Images (except assets)
+*.png
+!assets/*.png
+*.ico
+!assets/*.ico
