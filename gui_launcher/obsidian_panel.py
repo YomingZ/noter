@@ -59,7 +59,11 @@ class StepCard(QFrame):
         self._content_layout = layout
 
     def add_widget(self, widget):
-        self._content_layout.addWidget(widget)
+        from PyQt6.QtWidgets import QLayout
+        if isinstance(widget, QLayout):
+            self._content_layout.addLayout(widget)
+        else:
+            self._content_layout.addWidget(widget)
 
 
 class ObsidianPanel(QFrame):
