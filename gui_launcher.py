@@ -47,8 +47,9 @@ from gui_launcher.log_panel import LogPanel
 from gui_launcher.drop_area import DropArea
 from gui_launcher.file_card import FileCard
 from gui_launcher.file_list_area import FileListArea
-from gui_launcher.title_bar import CustomTitleBar
 from gui_launcher.settings_page import SettingsPage
+
+DEFAULT_OBSIDIAN_VAULT = Path(r"E:\obsidianwithclaude\Obsidian")
 
 settings_manager = SettingsManager()
 
@@ -81,14 +82,17 @@ class WorkerThread(QThread):
 
     def run(self):
         import sys
+        import traceback
+        self.log.emit("📦 WorkerThread 启动...", "info")
         src_dir = str(SCRIPT_DIR / "src")
         if src_dir not in sys.path:
             sys.path.insert(0, src_dir)
 
         try:
             from pdf_summarizer.processing_service import ProcessingService
+            self.log.emit("✅ 模块导入成功", "info")
         except ImportError as e:
-            self.log.emit(f"导入模块失败: {e}", "error")
+            self.log.emit(f"❌ 导入模块失败: {e}", "error")
             self.finished_all.emit(False, "模块导入失败")
             return
 
@@ -99,43 +103,55 @@ class WorkerThread(QThread):
             "base_url": settings_manager.get("ai", "base_url", default=""),
             "temperature": settings_manager.get("ai", "temperature", default=0.7),
         }
-
-        self._svc = ProcessingService(
-            provider=self.provider,
-            output_format=self.output_format,
-            output_dir=Path(self.output_dir),
-            obsidian_template=Path(self.obsidian_template) if self.obsidian_template else None,
-            obsidian_course=self.obsidian_course,
-            obsidian_vault=Path(self.obsidian_vault) if self.obsidian_vault else None,
-        )
+        self.log.emit(f"🔑 API Key: {'已配置' if ai_config['api_key'] else '未配置'}", "info")
 
         try:
-            self._svc.configure_ai(ai_config)
-        except ValueError as e:
-            self.log.emit(str(e), "error")
-            self.finished_all.emit(False, str(e))
-            return
+            self._svc = ProcessingService(
+                provider=self.provider,
+                output_format=self.output_format,
+                output_dir=Path(self.output_dir),
+                obsidian_template=Path(self.obsidian_template) if self.obsidian_template else None,
+                obsidian_course=self.obsidian_course,
+                obsidian_vault=Path(self.obsidian_vault) if self.obsidian_vault else None,
+            )
+            self.log.emit(f"✅ ProcessingService 创建成功 (格式: {self.output_format})", "info")
 
-        total = len(self.files)
-        success_count = 0
+            try:
+                self._svc.configure_ai(ai_config)
+                self.log.emit("✅ AI 配置完成", "info")
+            except ValueError as e:
+                self.log.emit(f"❌ AI 配置失败: {e}", "error")
+                self.finished_all.emit(False, str(e))
+                return
 
-        for result in self._svc.process_batch(self.files):
-            fp = result.input_file or Path("unknown")
+            total = len(self.files)
+            success_count = 0
+            self.log.emit(f"📄 开始处理 {total} 个文件...", "info")
 
-            if not result.success:
-                error_msg = result.error_message or "未知错误"
-                self.progress.emit(fp, 0, "failed")
-                self.log.emit(f"失败: {error_msg[:300]}", "error")
-                continue
+            for idx, result in enumerate(self._svc.process_batch(self.files), 1):
+                fp = result.input_file or Path("unknown")
+                self.log.emit(f"[{idx}/{total}] 处理: {fp.name}", "info")
 
-            self.progress.emit(fp, 100, "completed")
-            self.log.emit(f"完成: {fp.name}", "success")
-            success_count += 1
+                if not result.success:
+                    error_msg = result.error_message or "未知错误"
+                    self.progress.emit(fp, 0, "failed")
+                    self.log.emit(f"❌ 失败: {error_msg[:300]}", "error")
+                    continue
 
-        if success_count == total:
-            self.finished_all.emit(True, f"成功处理 {success_count}/{total}")
-        else:
-            self.finished_all.emit(False, f"成功 {success_count}/{total}")
+                self.progress.emit(fp, 100, "completed")
+                self.log.emit(f"✅ 完成: {fp.name}", "success")
+                success_count += 1
+
+            if success_count == total:
+                self.finished_all.emit(True, f"成功处理 {success_count}/{total}")
+            else:
+                self.finished_all.emit(False, f"成功 {success_count}/{total}")
+
+        except Exception as e:
+            error_detail = traceback.format_exc()
+            self.log.emit(f"💥 处理异常: {e}", "error")
+            self.log.emit(error_detail, "error")
+            self.finished_all.emit(False, f"处理失败: {e}")
 
 
 # ============================================================================
@@ -143,24 +159,28 @@ class WorkerThread(QThread):
 # ============================================================================
 
 class ModernMainWindow(QMainWindow):
-    """现代风格主窗口"""
+    """Windows 11 风格主窗口"""
 
     def __init__(self):
         super().__init__()
         self.selected_files: List[Path] = []
         self.worker: Optional[WorkerThread] = None
 
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-
         self.setup_window()
         self.setup_ui()
         self.apply_theme()
 
     def setup_window(self):
+        from PyQt6.QtGui import QIcon
         self.setWindowTitle("PDF 备考笔记生成器")
         self.setMinimumSize(680, 680)
         self.resize(720, 760)
+
+        # 设置自定义图标（任务栏和Alt+Tab显示）
+        icon_path = "assets/noter_icon_v3.ico"
+        if Path(icon_path).exists():
+            self.setWindowIcon(QIcon(icon_path))
+
         screen = QApplication.primaryScreen()
         if screen:
             geometry = screen.availableGeometry()
@@ -173,22 +193,11 @@ class ModernMainWindow(QMainWindow):
         self.main_container.setObjectName("mainContainer")
         self.setCentralWidget(self.main_container)
 
-        shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(30)
-        shadow.setColor(QColor(0, 0, 0, 50))
-        shadow.setOffset(0, 10)
-        self.main_container.setGraphicsEffect(shadow)
-
         main_layout = QVBoxLayout(self.main_container)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 标题栏
-        self.title_bar = CustomTitleBar(self)
-        self.title_bar.backClicked.connect(self.show_main_page)
-        main_layout.addWidget(self.title_bar)
-
-        # 页面容器
+        # 页面容器（Windows原生标题栏，无需自定义）
         self.pages = QStackedWidget()
         main_layout.addWidget(self.pages)
 
@@ -199,6 +208,7 @@ class ModernMainWindow(QMainWindow):
         # 设置页面
         self.settings_page = SettingsPage()
         self.settings_page.settingsSaved.connect(self.on_settings_saved)
+        self.settings_page.applyClicked.connect(self.on_apply_clicked)
         self.pages.addWidget(self.settings_page)
 
         # 加载已保存的 Obsidian vault 路径
@@ -245,7 +255,7 @@ class ModernMainWindow(QMainWindow):
 
         # 选项区域
         options_frame = QFrame()
-        options_frame.setStyleSheet(f"QFrame {{ background-color: {Theme.get('bg_secondary')}; border-radius: 12px; }}")
+        options_frame.setStyleSheet(f"QFrame {{ background-color: {Theme.get('bg_secondary')}; border: 1px solid {Theme.get('border_light')}; border-radius: 4px; }}")
         options_layout = QHBoxLayout(options_frame)
         options_layout.setContentsMargins(16, 12, 16, 12)
         options_layout.setSpacing(24)
@@ -276,20 +286,20 @@ class ModernMainWindow(QMainWindow):
 
         # 设置按钮
         self.settings_btn = QPushButton("⚙️ 设置")
-        self.settings_btn.setFixedSize(90, 36)
+        self.settings_btn.setFixedSize(90, 32)
         self.settings_btn.setStyleSheet(f"""
-            QPushButton {{ background-color: {Theme.get('bg_tertiary')}; color: {Theme.get('text_primary')}; border: none; border-radius: 10px; font-size: 13px; }}
-            QPushButton:hover {{ background-color: {Theme.get('bg_elevated')}; }}
+            QPushButton {{ background-color: {Theme.get('bg_tertiary')}; color: {Theme.get('text_primary')}; border: 1px solid {Theme.get('border')}; border-radius: 4px; font-size: 13px; }}
+            QPushButton:hover {{ background-color: {Theme.get('bg_elevated')}; border-color: {Theme.ACCENT_PRIMARY}; }}
         """)
         self.settings_btn.clicked.connect(self.show_settings_page)
         options_layout.addWidget(self.settings_btn)
 
         # 主题切换
         self.theme_btn = QPushButton("🌙")
-        self.theme_btn.setFixedSize(36, 36)
+        self.theme_btn.setFixedSize(32, 32)
         self.theme_btn.setStyleSheet(f"""
-            QPushButton {{ background-color: {Theme.get('bg_tertiary')}; border: none; border-radius: 18px; font-size: 14px; }}
-            QPushButton:hover {{ background-color: {Theme.get('bg_elevated')}; }}
+            QPushButton {{ background-color: {Theme.get('bg_tertiary')}; border: 1px solid {Theme.get('border')}; border-radius: 4px; font-size: 14px; }}
+            QPushButton:hover {{ background-color: {Theme.get('bg_elevated')}; border-color: {Theme.ACCENT_PRIMARY}; }}
         """)
         self.theme_btn.clicked.connect(self.toggle_theme)
         options_layout.addWidget(self.theme_btn)
@@ -320,10 +330,10 @@ class ModernMainWindow(QMainWindow):
         action_layout.addStretch()
 
         self.cancel_btn = QPushButton("取消")
-        self.cancel_btn.setFixedSize(80, 44)
+        self.cancel_btn.setFixedSize(80, 36)
         self.cancel_btn.setStyleSheet(f"""
-            QPushButton {{ background-color: {Theme.get('bg_secondary')}; color: {Theme.get('text_primary')}; border: 1px solid {Theme.get('border')}; border-radius: 12px; font-size: 14px; }}
-            QPushButton:hover {{ background-color: {Theme.get('bg_tertiary')}; }}
+            QPushButton {{ background-color: {Theme.get('bg_secondary')}; color: {Theme.get('text_primary')}; border: 1px solid {Theme.get('border')}; border-radius: 4px; font-size: 13px; }}
+            QPushButton:hover {{ background-color: {Theme.get('bg_tertiary')}; border-color: {Theme.ACCENT_PRIMARY}; }}
             QPushButton:disabled {{ color: {Theme.get('text_tertiary')}; }}
         """)
         self.cancel_btn.clicked.connect(self.cancel_processing)
@@ -331,10 +341,10 @@ class ModernMainWindow(QMainWindow):
         action_layout.addWidget(self.cancel_btn)
 
         self.start_btn = QPushButton("开始生成")
-        self.start_btn.setFixedSize(120, 44)
+        self.start_btn.setFixedSize(120, 36)
         self.start_btn.setStyleSheet(f"""
-            QPushButton {{ background: {Theme.gradient_accent()}; color: white; border: none; border-radius: 12px; font-size: 14px; font-weight: 600; }}
-            QPushButton:hover {{ background-color: {Theme.ACCENT_AMBER_DARK}; }}
+            QPushButton {{ background: {Theme.gradient_accent()}; color: white; border: none; border-radius: 4px; font-size: 13px; font-weight: 600; }}
+            QPushButton:hover {{ background-color: {Theme.ACCENT_PRIMARY_DARK}; }}
             QPushButton:disabled {{ background: {Theme.get('bg_tertiary')}; color: {Theme.get('text_tertiary')}; }}
         """)
         self.start_btn.clicked.connect(self.start_processing)
@@ -348,19 +358,19 @@ class ModernMainWindow(QMainWindow):
 
     def _combo_style(self) -> str:
         return f"""
-            QComboBox {{ background-color: {Theme.get('bg_tertiary')}; color: {Theme.get('text_primary')}; border: 1px solid {Theme.get('border_light')}; border-radius: 8px; padding: 8px 12px; font-size: 13px; min-width: 90px; }}
-            QComboBox:hover {{ border-color: {Theme.get('border')}; }}
+            QComboBox {{ background-color: {Theme.get('bg_tertiary')}; color: {Theme.get('text_primary')}; border: 1px solid {Theme.get('border_light')}; border-radius: 4px; padding: 6px 12px; font-size: 13px; min-width: 90px; }}
+            QComboBox:hover {{ border-color: {Theme.ACCENT_PRIMARY}; }}
             QComboBox::drop-down {{ border: none; width: 20px; }}
             QComboBox::down-arrow {{ image: none; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 5px solid {Theme.get('text_secondary')}; }}
-            QComboBox QAbstractItemView {{ background-color: {Theme.get('bg_elevated')}; color: {Theme.get('text_primary')}; border: 1px solid {Theme.get('border')}; border-radius: 8px; selection-background-color: {Theme.ACCENT_BLUE}; }}
+            QComboBox QAbstractItemView {{ background-color: {Theme.get('bg_elevated')}; color: {Theme.get('text_primary')}; border: 1px solid {Theme.get('border')}; border-radius: 4px; selection-background-color: {Theme.ACCENT_PRIMARY}; }}
         """
 
     def apply_theme(self):
         bg = Theme.get('bg_primary')
         self.main_container.setStyleSheet(f"""
-            #mainContainer {{ background-color: {bg}; border-radius: 12px; border: 1px solid {Theme.get('border_light')}; }}
+            #mainContainer {{ background-color: {bg}; }}
         """)
-        self.title_bar.setStyleSheet(f"QFrame {{ background-color: {bg}; border: none; border-top-left-radius: 12px; border-top-right-radius: 12px; }}")
+        self.setWindowTitle("PDF 备考笔记生成器")
         self.theme_btn.setText("☀️" if Theme.DARK_MODE else "🌙")
 
     def toggle_theme(self):
@@ -372,9 +382,7 @@ class ModernMainWindow(QMainWindow):
 
     def show_settings_page(self):
         self.settings_page.load_settings()
-        self.title_bar.set_show_back(True)
-        self.title_bar.set_title("设置")
-        # Fade-style page switch via opacity animation
+        self.setWindowTitle("设置 - PDF 备考笔记生成器")
         self._animate_page_switch(1)
 
     def _animate_page_switch(self, index: int):
@@ -399,8 +407,10 @@ class ModernMainWindow(QMainWindow):
     def _browse_obsidian_template(self):
         """Open file dialog to select an Obsidian markdown template."""
         from PyQt6.QtWidgets import QFileDialog
+        vault_path = self.obsidian_panel.vault_edit.text().strip()
+        start_dir = vault_path if vault_path and Path(vault_path).is_dir() else str(DEFAULT_OBSIDIAN_VAULT)
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择笔记模板", str(Path.home()),
+            self, "选择笔记模板", start_dir,
             "Markdown 文件 (*.md);;所有文件 (*)"
         )
         if path:
@@ -409,8 +419,10 @@ class ModernMainWindow(QMainWindow):
     def _browse_obsidian_vault(self):
         """Open folder dialog to select Obsidian vault directory."""
         from PyQt6.QtWidgets import QFileDialog
+        current = self.obsidian_panel.vault_edit.text().strip()
+        start_dir = current if current and Path(current).is_dir() else str(DEFAULT_OBSIDIAN_VAULT)
         path = QFileDialog.getExistingDirectory(
-            self, "选择 Obsidian Vault 目录", str(Path.home())
+            self, "选择 Obsidian Vault 目录", start_dir
         )
         if path:
             self.obsidian_panel.vault_edit.setText(path)
@@ -439,12 +451,26 @@ class ModernMainWindow(QMainWindow):
             self.on_log(f"已加载 {len(courses)} 个课程: {', '.join(courses[:5])}{'...' if len(courses) > 5 else ''}", "info")
 
     def show_main_page(self):
-        self.title_bar.set_show_back(False)
-        self.title_bar.set_title("PDF 备考笔记生成器")
+        self.setWindowTitle("PDF 备考笔记生成器")
         self._animate_page_switch(0)
 
     def on_settings_saved(self):
+        self._sync_settings_to_main()
         self.show_main_page()
+
+    def on_apply_clicked(self):
+        self._sync_settings_to_main()
+        self.statusBar().showMessage("✅ 设置已应用", 3000)
+
+    def _sync_settings_to_main(self):
+        """从 settings_manager 同步值到主界面控件。"""
+        fmt = settings_manager.get("output", "format", default="docx")
+        self.format_combo.setCurrentText(fmt)
+
+        provider = settings_manager.get("ai", "provider", default="kimi")
+        provider_map = {"kimi": "kimi", "openai": "openai", "anthropic": "claude"}
+        mapped = provider_map.get(provider, "kimi")
+        self.provider_combo.setCurrentText(mapped)
 
     def on_files_dropped(self, files: List[Path]):
         for f in files:
@@ -489,6 +515,11 @@ class ModernMainWindow(QMainWindow):
         # 保存 vault 路径供下次使用
         if obsidian_vault:
             settings_manager.set("storage", "obsidian_vault", obsidian_vault)
+
+        # 显示调试信息
+        self.log_panel.append_log("🚀 开始处理...", "info")
+        self.log_panel.append_log(f"文件数量: {len(self.selected_files)}", "info")
+        self.log_panel.append_log(f"输出格式: {fmt}", "info")
 
         # 创建并启动工作线程
         self.worker = WorkerThread(
@@ -550,12 +581,18 @@ class ModernMainWindow(QMainWindow):
 # ============================================================================
 
 def main():
+    from PyQt6.QtGui import QIcon
     Theme.init_from_system()
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
     app = QApplication(sys.argv)
     app.setApplicationName("PDF 备考笔记生成器")
+
+    # 设置应用级图标（任务栏、Alt+Tab等）
+    icon_path = Path(__file__).parent / "assets" / "noter_icon_v3.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     font = QFont("Microsoft YaHei", 10)
     app.setFont(font)

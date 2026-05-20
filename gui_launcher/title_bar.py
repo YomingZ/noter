@@ -125,7 +125,7 @@ class CustomTitleBar(QFrame):
         self.back_btn.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
-                color: {Theme.ACCENT_AMBER};
+                color: {Theme.ACCENT_PRIMARY};
                 border: 1px solid transparent;
                 border-radius: 14px;
                 font-size: 16px;

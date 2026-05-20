@@ -33,7 +33,7 @@ class LogPanel(QFrame):
     def setup_ui(self):
         self.setStyleSheet(
             f"QFrame {{ background-color: {Theme.get('bg_secondary')}; "
-            f"border-radius: 12px; border: 1px solid {Theme.get('border_light')}; }}"
+            f"border-radius: 4px; border: 1px solid {Theme.get('border_light')}; }}"
         )
 
         layout = QVBoxLayout(self)
@@ -72,7 +72,7 @@ class LogPanel(QFrame):
                 background: transparent;
                 color: {Theme.get('text_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 6px;
+                border-radius: 4px;
                 font-size: 12px;
             }}
             QPushButton:hover {{
@@ -103,8 +103,8 @@ class LogPanel(QFrame):
             QTextEdit {{
                 background-color: {bg};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                padding: 10px 12px;
+                border-radius: 4px;
+                padding: 8px 10px;
                 font-family: "Cascadia Code", "JetBrains Mono", "Consolas", "Microsoft YaHei", monospace;
                 font-size: 12px;
                 color: {fg};
@@ -115,10 +115,10 @@ class LogPanel(QFrame):
         if active:
             return f"""
                 QPushButton {{
-                    background-color: {Theme.ACCENT_AMBER};
+                    background-color: {Theme.ACCENT_PRIMARY};
                     color: white;
                     border: none;
-                    border-radius: 6px;
+                    border-radius: 4px;
                     font-size: 11px;
                     font-weight: 600;
                     padding: 0 10px;
@@ -129,7 +129,7 @@ class LogPanel(QFrame):
                 background-color: transparent;
                 color: {Theme.get('text_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 6px;
+                border-radius: 4px;
                 font-size: 11px;
                 padding: 0 10px;
             }}

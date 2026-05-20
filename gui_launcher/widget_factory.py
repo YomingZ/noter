@@ -1,4 +1,4 @@
-"""Widget Factory — polished UI component factory matching the Scholarly Warmth theme."""
+"""Widget Factory — Windows 11 Fluent Design UI component factory."""
 
 from PyQt6.QtWidgets import (
     QFrame, QLabel, QLineEdit, QComboBox, QPushButton,
@@ -10,7 +10,7 @@ from gui_launcher.theme import Theme
 
 
 class WidgetFactory:
-    """Unified UI component factory with warm academic styling."""
+    """Unified UI component factory with Windows 11 styling."""
 
     LABEL_WIDTH = 80
 
@@ -22,20 +22,19 @@ class WidgetFactory:
             QFrame {{
                 background-color: {Theme.get('bg_secondary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 12px;
+                border-radius: 4px;
             }}
         """)
         layout = QVBoxLayout(group)
-        layout.setContentsMargins(18, 16, 18, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(12)
 
         title_label = QLabel(title)
         title_label.setStyleSheet(f"""
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             color: {Theme.get('text_primary')};
             background: transparent;
-            letter-spacing: 0.3px;
         """)
         layout.addWidget(title_label)
 
@@ -46,8 +45,8 @@ class WidgetFactory:
         label = QLabel(text)
         label.setFixedWidth(width)
         label.setStyleSheet(
-            f"font-size: 13px; color: {Theme.get('text_primary')}; "
-            f"background: transparent; font-weight: 450;"
+            f"font-size: 12px; color: {Theme.get('text_primary')}; "
+            f"background: transparent;"
         )
         return label
 
@@ -70,18 +69,18 @@ class WidgetFactory:
             QLineEdit {{
                 background-color: {Theme.get('bg_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                padding: 10px 14px;
-                font-size: 13px;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 12px;
                 color: {Theme.get('text_primary')};
-                min-height: 20px;
+                min-height: 18px;
             }}
             QLineEdit:focus {{
-                border-color: {Theme.ACCENT_AMBER};
+                border-color: {Theme.ACCENT_PRIMARY};
             }}
             QLineEdit::placeholder {{
                 color: {Theme.get('text_tertiary')};
-                font-size: 12.5px;
+                font-size: 12px;
             }}
         """)
         return le
@@ -94,14 +93,14 @@ class WidgetFactory:
             QComboBox {{
                 background-color: {Theme.get('bg_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 13px;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 12px;
                 color: {Theme.get('text_primary')};
                 min-width: 140px;
             }}
-            QComboBox:hover {{ border-color: {Theme.get('border')}; }}
-            QComboBox::drop-down {{ border: none; width: 26px; }}
+            QComboBox:hover {{ border-color: {Theme.ACCENT_PRIMARY}; }}
+            QComboBox::drop-down {{ border: none; width: 24px; }}
             QComboBox::down-arrow {{
                 image: none;
                 border-left: 5px solid transparent;
@@ -112,14 +111,14 @@ class WidgetFactory:
                 background-color: {Theme.get('bg_elevated')};
                 color: {Theme.get('text_primary')};
                 border: 1px solid {Theme.get('border')};
-                border-radius: 8px;
-                selection-background-color: {Theme.ACCENT_AMBER};
+                border-radius: 4px;
+                selection-background-color: {Theme.ACCENT_PRIMARY};
                 selection-color: white;
                 padding: 4px;
             }}
             QComboBox QAbstractItemView::item {{
-                padding: 6px 10px;
-                border-radius: 4px;
+                padding: 5px 8px;
+                border-radius: 2px;
             }}
         """)
         return combo
@@ -133,13 +132,13 @@ class WidgetFactory:
                     background: {Theme.gradient_accent()};
                     color: white;
                     border: none;
-                    border-radius: 8px;
-                    padding: 10px 22px;
-                    font-size: 13px;
+                    border-radius: 4px;
+                    padding: 7px 18px;
+                    font-size: 12px;
                     font-weight: 600;
                 }}
                 QPushButton:hover {{
-                    background-color: {Theme.ACCENT_AMBER_DARK};
+                    background-color: {Theme.ACCENT_PRIMARY_DARK};
                 }}
             """)
         else:
@@ -148,13 +147,13 @@ class WidgetFactory:
                     background-color: {Theme.get('bg_tertiary')};
                     color: {Theme.get('text_primary')};
                     border: 1px solid {Theme.get('border_light')};
-                    border-radius: 8px;
-                    padding: 10px 20px;
-                    font-size: 13px;
+                    border-radius: 4px;
+                    padding: 7px 16px;
+                    font-size: 12px;
                 }}
                 QPushButton:hover {{
                     background-color: {Theme.get('surface_2')};
-                    border-color: {Theme.get('border')};
+                    border-color: {Theme.ACCENT_PRIMARY};
                 }}
             """)
         return btn
@@ -165,23 +164,23 @@ class WidgetFactory:
         cb.setChecked(checked)
         cb.setStyleSheet(f"""
             QCheckBox {{
-                font-size: 13px;
+                font-size: 12px;
                 color: {Theme.get('text_primary')};
-                spacing: 8px;
+                spacing: 6px;
             }}
             QCheckBox::indicator {{
-                width: 18px;
-                height: 18px;
-                border-radius: 5px;
-                border: 2px solid {Theme.get('border')};
+                width: 16px;
+                height: 16px;
+                border-radius: 3px;
+                border: 1px solid {Theme.get('border')};
                 background-color: {Theme.get('bg_tertiary')};
             }}
             QCheckBox::indicator:checked {{
-                background-color: {Theme.ACCENT_AMBER};
-                border-color: {Theme.ACCENT_AMBER};
+                background-color: {Theme.ACCENT_PRIMARY};
+                border-color: {Theme.ACCENT_PRIMARY};
             }}
             QCheckBox::indicator:hover {{
-                border-color: {Theme.ACCENT_AMBER};
+                border-color: {Theme.ACCENT_PRIMARY};
             }}
         """)
         return cb
@@ -192,25 +191,25 @@ class WidgetFactory:
         slider.setStyleSheet(f"""
             QSlider::groove:horizontal {{
                 background: {Theme.get('bg_tertiary')};
-                height: 6px;
-                border-radius: 3px;
+                height: 4px;
+                border-radius: 2px;
             }}
             QSlider::handle:horizontal {{
-                background: {Theme.ACCENT_AMBER};
-                width: 18px;
-                height: 18px;
+                background: {Theme.ACCENT_PRIMARY};
+                width: 16px;
+                height: 16px;
                 margin: -6px 0;
-                border-radius: 9px;
+                border-radius: 8px;
             }}
             QSlider::handle:horizontal:hover {{
-                background: {Theme.ACCENT_AMBER_DARK};
-                width: 20px;
-                height: 20px;
+                background: {Theme.ACCENT_HOVER};
+                width: 18px;
+                height: 18px;
                 margin: -7px 0;
             }}
             QSlider::sub-page:horizontal {{
                 background: {Theme.gradient_accent()};
-                border-radius: 3px;
+                border-radius: 2px;
             }}
         """)
         return slider
@@ -218,7 +217,7 @@ class WidgetFactory:
     @staticmethod
     def create_row(label_text: str, widget, connect=None):
         row = QHBoxLayout()
-        row.setSpacing(12)
+        row.setSpacing(10)
         label = WidgetFactory.create_label(label_text)
         row.addWidget(label)
         if hasattr(widget, 'currentIndexChanged') and connect:
@@ -234,28 +233,27 @@ class WidgetFactory:
         default_key: str = "",
         callback=None,
     ) -> tuple[QFrame, dict]:
-        """Create a macOS-style segmented control from QPushButtons.
+        """Create a Windows-style segmented control from QPushButtons.
 
         Returns (container_frame, {key: button}) for state tracking.
         """
         segments = {}
         container = QFrame()
-        container.setFixedHeight(38)
+        container.setFixedHeight(34)
         container.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(1)
+        layout.setSpacing(0)
 
         count = len(options)
         for i, (key, label) in enumerate(options):
             btn = QPushButton(label)
-            btn.setFixedHeight(34)
+            btn.setFixedHeight(32)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            # Rounded ends for first/last
-            radius = "8px" if count == 1 else (
-                "8px 0 0 8px" if i == 0 else (
-                    "0 8px 8px 0" if i == count - 1 else "0"
+            radius = "4px" if count == 1 else (
+                "4px 0 0 4px" if i == 0 else (
+                    "0 4px 4px 0" if i == count - 1 else "0"
                 )
             )
 
@@ -276,7 +274,7 @@ class WidgetFactory:
                     color: white;
                     border: none;
                     border-radius: {radius};
-                    font-size: 12.5px;
+                    font-size: 12px;
                     font-weight: 600;
                 }}
             """
@@ -286,11 +284,12 @@ class WidgetFactory:
                 color: {Theme.get('text_secondary')};
                 border: 1px solid {Theme.get('border_light')};
                 border-radius: {radius};
-                font-size: 12.5px;
+                font-size: 12px;
             }}
             QPushButton:hover {{
                 background-color: {Theme.get('surface_2')};
                 color: {Theme.get('text_primary')};
+                border-color: {Theme.ACCENT_PRIMARY};
             }}
         """
 
@@ -298,9 +297,9 @@ class WidgetFactory:
     def _seg_toggle(active_key: str, segments: dict, callback=None):
         count = len(segments)
         for i, (key, btn) in enumerate(segments.items()):
-            radius = "8px" if count == 1 else (
-                "8px 0 0 8px" if i == 0 else (
-                    "0 8px 8px 0" if i == count - 1 else "0"
+            radius = "4px" if count == 1 else (
+                "4px 0 0 4px" if i == 0 else (
+                    "0 4px 4px 0" if i == count - 1 else "0"
                 )
             )
             active = key == active_key

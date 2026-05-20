@@ -1,81 +1,81 @@
-"""Theme module — "Scholarly Warmth" design system.
+"""Theme module — Windows 11 Fluent Design system.
 
-Warm-toned academic palette inspired by cream paper and Obsidian's deep indigo.
-Provides surface elevations, glass effects, shadows, and gradient definitions.
+Clean, modern palette inspired by Microsoft's Fluent Design.
+Provides surface elevations, accent colors, and mode switching.
 Zero PyQt dependency — pure color constants and mode switching.
 """
 
 
 class Theme:
-    """Scholarly Warmth design system — warm neutrals meet deep indigo dark mode."""
+    """Windows 11 Fluent Design system — clean, professional, native feel."""
 
     DARK_MODE = False
 
-    # Accent colors — warm amber gold for scholarly feel
-    ACCENT_AMBER = "#D4A047"
-    ACCENT_AMBER_LIGHT = "#E8C47A"
-    ACCENT_AMBER_DARK = "#B8863A"
-    ACCENT_BLUE = "#4A6CF7"
-    ACCENT_BLUE_DARK = "#3451DB"
-    SUCCESS_GREEN = "#34C759"
-    WARNING_ORANGE = "#FF9500"
-    ERROR_RED = "#FF3B30"
-    ERROR_RED_DARK = "#D32F2F"
+    # Accent colors — Windows Blue
+    ACCENT_PRIMARY = "#0078D4"
+    ACCENT_PRIMARY_LIGHT = "#4BA0E8"
+    ACCENT_PRIMARY_DARK = "#005A9E"
+    ACCENT_HOVER = "#1B86D9"
+    ACCENT_PRESSED = "#006ABF"
+    SUCCESS_GREEN = "#107C10"
+    WARNING_ORANGE = "#FFAA44"
+    ERROR_RED = "#E81123"
+    ERROR_RED_DARK = "#C50E1F"
 
     LIGHT = {
-        # Base — warm cream tones like quality paper
-        'bg_primary': '#FAF8F5',
-        'bg_secondary': '#F2EFEB',
-        'bg_tertiary': '#E8E4DD',
+        # Base — clean white/gray like Windows 11
+        'bg_primary': '#FFFFFF',
+        'bg_secondary': '#F3F3F3',
+        'bg_tertiary': '#FBFBFB',
         'bg_elevated': '#FFFFFF',
-        # Glass — frosted overlay
-        'bg_glass': 'rgba(255, 255, 255, 0.72)',
+        # Glass
+        'bg_glass': 'rgba(255, 255, 255, 0.85)',
         # Surface elevation (1 = lowest, 3 = highest)
         'surface_1': '#FFFFFF',
         'surface_2': '#FAFAFA',
-        'surface_3': '#F5F5F0',
-        # Borders — warm grays
-        'border': '#D4CFC8',
-        'border_light': '#E5E1DA',
-        'border_lighter': '#F0EDE8',
-        # Text — soft black
-        'text_primary': '#2D2A24',
-        'text_secondary': '#8B8580',
-        'text_tertiary': '#B5AFA8',
+        'surface_3': '#F5F5F5',
+        # Borders — subtle grays
+        'border': '#C4C4C4',
+        'border_light': '#E5E5E5',
+        'border_lighter': '#F0F0F0',
+        # Text — crisp black/gray
+        'text_primary': '#1A1A1A',
+        'text_secondary': '#606060',
+        'text_tertiary': '#8C8C8C',
         'text_inverse': '#FFFFFF',
         # Special
-        'shadow': 'rgba(45, 42, 36, 0.08)',
-        'shadow_heavy': 'rgba(45, 42, 36, 0.16)',
-        'scrollbar': '#D4D0C9',
-        'scrollbar_hover': '#BDB8B0',
+        'shadow': 'rgba(0, 0, 0, 0.06)',
+        'shadow_heavy': 'rgba(0, 0, 0, 0.12)',
+        'scrollbar': '#C4C4C4',
+        'scrollbar_hover': '#A0A0A0',
     }
 
     DARK = {
-        # Base — deep indigo, warmer than flat gray
-        'bg_primary': '#1C1B2B',
-        'bg_secondary': '#252438',
-        'bg_tertiary': '#2F2E45',
-        'bg_elevated': '#2A293E',
+        # Base — dark grays like Windows 11 Dark Mode
+        'bg_primary': '#202020',
+        'bg_secondary': '#2D2D2D',
+        'bg_tertiary': '#383838',
+        'bg_elevated': '#2D2D2D',
         # Glass
-        'bg_glass': 'rgba(28, 27, 43, 0.78)',
+        'bg_glass': 'rgba(32, 32, 32, 0.85)',
         # Surface elevation
-        'surface_1': '#2A293E',
-        'surface_2': '#302F45',
-        'surface_3': '#38374F',
-        # Borders — purple-toned grays
-        'border': '#3E3D55',
-        'border_light': '#35344A',
-        'border_lighter': '#2E2D42',
+        'surface_1': '#2D2D2D',
+        'surface_2': '#333333',
+        'surface_3': '#383838',
+        # Borders
+        'border': '#505050',
+        'border_light': '#3D3D3D',
+        'border_lighter': '#353535',
         # Text
-        'text_primary': '#EEEDF2',
-        'text_secondary': '#9695B0',
-        'text_tertiary': '#6A6982',
-        'text_inverse': '#1C1B2B',
+        'text_primary': '#FFFFFF',
+        'text_secondary': '#ABABAB',
+        'text_tertiary': '#7A7A7A',
+        'text_inverse': '#202020',
         # Special
-        'shadow': 'rgba(0, 0, 0, 0.24)',
-        'shadow_heavy': 'rgba(0, 0, 0, 0.36)',
-        'scrollbar': '#3E3D55',
-        'scrollbar_hover': '#525170',
+        'shadow': 'rgba(0, 0, 0, 0.18)',
+        'shadow_heavy': 'rgba(0, 0, 0, 0.30)',
+        'scrollbar': '#505050',
+        'scrollbar_hover': '#686868',
     }
 
     @classmethod
@@ -107,7 +107,7 @@ class Theme:
         """Accent gradient for buttons and highlights."""
         return (
             f"qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-            f"stop:0 {cls.ACCENT_AMBER}, stop:1 {cls.ACCENT_AMBER_DARK})"
+            f"stop:0 {cls.ACCENT_PRIMARY_LIGHT}, stop:1 {cls.ACCENT_PRIMARY})"
         )
 
     @classmethod

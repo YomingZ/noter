@@ -99,7 +99,6 @@ class FileCard(QFrame):
         self.status_dot = QLabel("●")
         self.status_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_dot.setFixedSize(16, 16)
-        self._apply_status_visuals("pending")
         status_col.addWidget(self.status_dot)
 
         self.status_label = QLabel("待处理")
@@ -109,6 +108,9 @@ class FileCard(QFrame):
             f"background: transparent;"
         )
         status_col.addWidget(self.status_label)
+
+        # 现在设置初始状态（必须在 status_dot 和 status_label 定义之后）
+        self._apply_status_visuals("pending")
 
         layout.addLayout(status_col)
 
@@ -126,7 +128,7 @@ class FileCard(QFrame):
         self.progress_fill = QFrame()
         self.progress_fill.setFixedWidth(0)
         self.progress_fill.setStyleSheet(
-            f"background-color: {Theme.ACCENT_BLUE}; "
+            f"background-color: {Theme.ACCENT_PRIMARY}; "
             f"border-radius: 2px; border: none;"
         )
         prog_layout.addWidget(self.progress_fill)
@@ -142,7 +144,7 @@ class FileCard(QFrame):
             QFrame {{
                 background-color: {Theme.get('surface_1')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 12px;
+                border-radius: 4px;
             }}
             QFrame:hover {{
                 border-color: {Theme.get('border')};
@@ -160,9 +162,9 @@ class FileCard(QFrame):
         """Update status dot color and label text."""
         styles = {
             "pending":     (Theme.get('text_tertiary'), "待处理"),
-            "processing":  (Theme.ACCENT_BLUE,         "处理中"),
-            "completed":   (Theme.SUCCESS_GREEN,       "已完成"),
-            "failed":      (Theme.ERROR_RED,           "失败"),
+            "processing":  (Theme.ACCENT_PRIMARY,       "处理中"),
+            "completed":   (Theme.SUCCESS_GREEN,        "已完成"),
+            "failed":      (Theme.ERROR_RED,            "失败"),
         }
         dot_color, label = styles.get(status, styles["pending"])
         self.status_dot.setStyleSheet(
@@ -180,10 +182,10 @@ class FileCard(QFrame):
 
         # Update progress fill color on completion/failure
         chunk_color = {
-            "processing": Theme.ACCENT_BLUE,
+            "processing": Theme.ACCENT_PRIMARY,
             "completed":  Theme.SUCCESS_GREEN,
             "failed":     Theme.ERROR_RED,
-        }.get(status, Theme.ACCENT_BLUE)
+        }.get(status, Theme.ACCENT_PRIMARY)
         self.progress_fill.setStyleSheet(
             f"background-color: {chunk_color}; border-radius: 2px; border: none;"
         )
@@ -222,7 +224,7 @@ class FileCard(QFrame):
             QFrame {{
                 background-color: {Theme.get('surface_2')};
                 border: 1px solid {Theme.get('border')};
-                border-radius: 12px;
+                border-radius: 4px;
             }}
         """)
         super().enterEvent(event)

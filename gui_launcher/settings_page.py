@@ -19,6 +19,7 @@ class SettingsPage(QWidget):
     """设置页面 — card-based layout with segmented controls."""
 
     settingsSaved = pyqtSignal()
+    applyClicked = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -49,6 +50,43 @@ class SettingsPage(QWidget):
         layout.setContentsMargins(28, 20, 28, 28)
         layout.setSpacing(18)
 
+        # ── 返回按钮 ──
+        back_row = QHBoxLayout()
+        back_row.setSpacing(12)
+
+        self.back_btn = QPushButton("← 返回")
+        self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.back_btn.setFixedHeight(32)
+        self.back_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {Theme.ACCENT_PRIMARY};
+                border: 1px solid {Theme.ACCENT_PRIMARY};
+                border-radius: 4px;
+                padding: 0 16px;
+                font-size: 13px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {Theme.ACCENT_PRIMARY};
+                color: white;
+            }}
+        """)
+        self.back_btn.clicked.connect(self._on_back_clicked)
+        back_row.addWidget(self.back_btn)
+        back_row.addStretch()
+
+        title_label = QLabel("⚙️ 设置")
+        title_label.setStyleSheet(
+            f"font-size: 18px; font-weight: 600; color: {Theme.get('text_primary')}; "
+            f"background: transparent;"
+        )
+        back_row.addWidget(title_label)
+        back_row.addStretch()
+
+        layout.addLayout(back_row)
+        layout.addSpacing(8)
+
         # ── Profile ──
         profile_group, profile_layout = self.create_group("📂 配置文件")
         profile_layout.setSpacing(0)
@@ -63,9 +101,9 @@ class SettingsPage(QWidget):
             QComboBox {{
                 background-color: {Theme.get('bg_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                padding: 8px 14px;
-                font-size: 13px;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 12px;
                 color: {Theme.get('text_primary')};
                 min-width: 160px;
             }}
@@ -80,8 +118,8 @@ class SettingsPage(QWidget):
                 background-color: {Theme.get('bg_elevated')};
                 color: {Theme.get('text_primary')};
                 border: 1px solid {Theme.get('border')};
-                border-radius: 8px;
-                selection-background-color: {Theme.ACCENT_AMBER};
+                border-radius: 4px;
+                selection-background-color: {Theme.ACCENT_PRIMARY};
                 selection-color: white;
             }}
         """)
@@ -99,11 +137,11 @@ class SettingsPage(QWidget):
                 background-color: {Theme.get('bg_tertiary')};
                 color: {Theme.get('text_primary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                padding: 8px 18px;
-                font-size: 12.5px;
+                border-radius: 4px;
+                padding: 6px 16px;
+                font-size: 12px;
             }}
-            QPushButton:hover {{ background-color: {Theme.get('surface_2')}; }}
+            QPushButton:hover {{ background-color: {Theme.get('surface_2')}; border-color: {Theme.ACCENT_PRIMARY}; }}
         """)
         self.save_profile_btn.clicked.connect(self.save_current_profile)
         profile_row.addWidget(self.save_profile_btn)
@@ -114,9 +152,9 @@ class SettingsPage(QWidget):
                 background-color: {Theme.ERROR_RED};
                 color: white;
                 border: none;
-                border-radius: 8px;
-                padding: 8px 18px;
-                font-size: 12.5px;
+                border-radius: 4px;
+                padding: 6px 16px;
+                font-size: 12px;
             }}
             QPushButton:hover {{ background-color: {Theme.ERROR_RED_DARK}; }}
         """)
@@ -140,16 +178,17 @@ class SettingsPage(QWidget):
         self.api_key_input = self.create_input("输入 API 密钥", password=True)
         key_layout.addWidget(self.api_key_input, 1)
         self.toggle_key_btn = QPushButton("👁")
-        self.toggle_key_btn.setFixedSize(36, 36)
+        self.toggle_key_btn.setFixedSize(32, 32)
         self.toggle_key_btn.setStyleSheet(f"""
             QPushButton {{
                 background-color: {Theme.get('bg_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
+                border-radius: 4px;
                 font-size: 14px;
             }}
             QPushButton:hover {{
                 background-color: {Theme.get('surface_2')};
+                border-color: {Theme.ACCENT_PRIMARY};
             }}
         """)
         self.toggle_key_btn.clicked.connect(self.toggle_key_visibility)
@@ -256,6 +295,32 @@ class SettingsPage(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.addWidget(scroll)
+
+        # ── Apply 按钮 ──
+        apply_row = QHBoxLayout()
+        apply_row.setContentsMargins(28, 0, 28, 12)
+        apply_row.addStretch()
+
+        self.apply_btn = QPushButton("应用")
+        self.apply_btn.setFixedSize(100, 34)
+        self.apply_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.apply_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {Theme.gradient_accent()};
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 13px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background-color: {Theme.ACCENT_PRIMARY_DARK};
+            }}
+        """)
+        self.apply_btn.clicked.connect(self._on_apply_clicked)
+        apply_row.addWidget(self.apply_btn)
+
+        main_layout.addLayout(apply_row)
 
         # Auto-populate models
         self.on_provider_changed(0)
@@ -475,3 +540,12 @@ class SettingsPage(QWidget):
 
         settings_manager.save()
         self.settingsSaved.emit()
+
+    def _on_apply_clicked(self):
+        """应用按钮：保存设置，通知主界面同步"""
+        self.save_settings()
+        self.applyClicked.emit()
+
+    def _on_back_clicked(self):
+        """返回按钮：先保存设置，再发射信号"""
+        self.save_settings()

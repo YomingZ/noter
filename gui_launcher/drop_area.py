@@ -90,9 +90,9 @@ class DropArea(QFrame):
         self.badge.setFixedSize(28, 28)
         self.badge.move(20, 16)
         self.badge.setStyleSheet(
-            f"background-color: {Theme.ACCENT_AMBER}; color: white; "
+            f"background-color: {Theme.ACCENT_PRIMARY}; color: white; "
             f"border-radius: 14px; font-size: 11px; font-weight: 700; "
-            f"border: 2px solid {Theme.get('bg_primary') if not Theme.DARK_MODE else '#1C1B2B'};"
+            f"border: 2px solid {Theme.get('bg_primary') if not Theme.DARK_MODE else '#202020'};"
         )
         self.badge.hide()
 
@@ -137,13 +137,13 @@ class DropArea(QFrame):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         rect = self.rect().adjusted(2, 2, -2, -2)
-        radius = 16
+        radius = 8
 
         # ── Background gradient ──
         bg = Theme.get('bg_secondary')
         if self.is_drag_over:
             # Accent-tinted background on drag
-            accent_color = QColor(Theme.ACCENT_AMBER)
+            accent_color = QColor(Theme.ACCENT_PRIMARY)
             accent_color.setAlpha(20)  # very subtle tint
             painter.setBrush(accent_color)
         else:
@@ -153,7 +153,7 @@ class DropArea(QFrame):
 
         # ── Border ──
         if self.is_drag_over:
-            pen_color = QColor(Theme.ACCENT_AMBER)
+            pen_color = QColor(Theme.ACCENT_PRIMARY)
             pen_style = Qt.PenStyle.SolidLine
             pen_width = 2
         else:
@@ -173,7 +173,7 @@ class DropArea(QFrame):
 
         # ── Drag-over glow ──
         if self.is_drag_over:
-            glow = QColor(Theme.ACCENT_AMBER)
+            glow = QColor(Theme.ACCENT_PRIMARY)
             glow.setAlpha(30)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(glow)

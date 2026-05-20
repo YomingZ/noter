@@ -18,7 +18,7 @@ class StepCard(QFrame):
             QFrame {{
                 background-color: {Theme.get('surface_1')};
                 border: 1px solid {Theme.get('border_lighter')};
-                border-radius: 10px;
+                border-radius: 4px;
             }}
         """)
         layout = QHBoxLayout(self)
@@ -30,7 +30,7 @@ class StepCard(QFrame):
         badge.setFixedSize(28, 28)
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         badge.setStyleSheet(
-            f"background-color: {Theme.ACCENT_AMBER}; color: white; "
+            f"background-color: {Theme.ACCENT_PRIMARY}; color: white; "
             f"border-radius: 14px; font-size: 13px; font-weight: 700; "
             f"border: none;"
         )
@@ -84,7 +84,7 @@ class ObsidianPanel(QFrame):
         self.setVisible(False)  # hidden until obsidian format selected
         self.setStyleSheet(
             f"QFrame {{ background-color: {Theme.get('bg_secondary')}; "
-            f"border-radius: 12px; border: 1px solid {Theme.get('border_light')}; }}"
+            f"border-radius: 4px; border: 1px solid {Theme.get('border_light')}; }}"
         )
 
         outer = QVBoxLayout(self)
@@ -181,14 +181,14 @@ class ObsidianPanel(QFrame):
             QLineEdit {{
                 background-color: {Theme.get('bg_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 12.5px;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 12px;
                 color: {Theme.get('text_primary')};
                 min-height: 18px;
             }}
             QLineEdit:focus {{
-                border-color: {Theme.ACCENT_AMBER};
+                border-color: {Theme.ACCENT_PRIMARY};
             }}
             QLineEdit::placeholder {{
                 color: {Theme.get('text_tertiary')};
@@ -202,13 +202,13 @@ class ObsidianPanel(QFrame):
                 background-color: {Theme.get('bg_tertiary')};
                 color: {Theme.get('text_primary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                font-size: 12.5px;
-                padding: 0 14px;
+                border-radius: 4px;
+                font-size: 12px;
+                padding: 0 12px;
             }}
             QPushButton:hover {{
                 background-color: {Theme.get('bg_elevated')};
-                border-color: {Theme.get('border')};
+                border-color: {Theme.ACCENT_PRIMARY};
             }}
         """
 
@@ -218,13 +218,13 @@ class ObsidianPanel(QFrame):
             QComboBox {{
                 background-color: {Theme.get('bg_tertiary')};
                 border: 1px solid {Theme.get('border_light')};
-                border-radius: 8px;
-                padding: 8px 12px;
-                font-size: 12.5px;
+                border-radius: 4px;
+                padding: 6px 10px;
+                font-size: 12px;
                 color: {Theme.get('text_primary')};
                 min-width: 140px;
             }}
-            QComboBox:hover {{ border-color: {Theme.get('border')}; }}
+            QComboBox:hover {{ border-color: {Theme.ACCENT_PRIMARY}; }}
             QComboBox::drop-down {{ border: none; width: 24px; }}
             QComboBox::down-arrow {{
                 image: none;
@@ -236,8 +236,8 @@ class ObsidianPanel(QFrame):
                 background-color: {Theme.get('bg_elevated')};
                 color: {Theme.get('text_primary')};
                 border: 1px solid {Theme.get('border')};
-                border-radius: 8px;
-                selection-background-color: {Theme.ACCENT_AMBER};
+                border-radius: 4px;
+                selection-background-color: {Theme.ACCENT_PRIMARY};
                 selection-color: white;
             }}
         """
@@ -247,11 +247,11 @@ class ObsidianPanel(QFrame):
         if state == "ready":
             return (
                 f"background-color: {Theme.SUCCESS_GREEN}; color: white; "
-                f"border-radius: 8px; padding: 2px 10px; font-size: 11px; font-weight: 600;"
+                f"border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 600;"
             )
         return (
             f"background-color: {Theme.get('bg_tertiary')}; color: {Theme.get('text_tertiary')}; "
-            f"border-radius: 8px; padding: 2px 10px; font-size: 11px;"
+            f"border-radius: 4px; padding: 2px 10px; font-size: 11px;"
         )
 
     # ── Public API ──
