@@ -1,252 +1,233 @@
-# PDF 课件智能总结工具
+# 📚 PDF 笔记生成器（Noter）
 
-基于 AI 的 PDF 课件智能总结工具，支持批量处理 PDF 文件，调用 OpenAI/Claude/Kimi API 提取重点知识，生成结构化的 Word 备考笔记。
+基于 AI 的 PDF 课件智能总结工具，支持 **拖拽生成**、**GUI 交互式操作**、**命令行批量处理**。
+支持 Kimi / OpenAI / Claude 等 AI 服务，可输出 **Word 文档** 或 **Obsidian 笔记**。
 
-## 功能特性
+---
 
-- 📄 **PDF 文本提取** - 使用 pdfplumber 高效提取 PDF 文本
-- 🤖 **多 AI 提供商支持** - 支持 OpenAI、Claude、Kimi 等 AI 服务
-- 📝 **结构化笔记生成** - 自动生成包含核心概念、知识点、复习建议的笔记
-- 📁 **批量处理** - 支持批量处理整个文件夹的 PDF 文件
-- 💾 **Word 输出** - 输出格式化的 Word 文档 (.docx)
-- ⚙️ **灵活配置** - 支持 YAML 配置文件和 .env 环境变量
-- 🖱️ **拖拽运行** - 支持拖拽 PDF 文件到脚本一键生成
+## ✨ 功能特性
 
-## 快速开始（拖拽模式）
+- 📄 **PDF 文本提取** — 使用 pdfplumber 高效提取 PDF 文本
+- 🤖 **多 AI 提供商** — 支持 Kimi、OpenAI、Claude
+- 📝 **多种输出格式** — Word (.docx)、Markdown (.md)、HTML、**Obsidian 笔记**
+- 📁 **批量处理** — 支持批量处理整个文件夹的 PDF
+- 🖱️ **拖拽模式** — 将 PDF 拖到图标上即生成，无需打开软件
+- 🎨 **GUI 图形界面** — 现代化的 Windows 11 风格界面
+- 🏛️ **Obsidian 集成** — 直接输出到 Obsidian Vault 的指定课程文件夹
 
-### Windows 用户
+---
 
-1. **初始化项目**（仅需一次）
-   ```powershell
-   python -m venv venv
-   .\venv\Scripts\activate
-   pip install -e .
-   python 创建桌面快捷方式.py
-   ```
-
-2. **使用方法**
-   - 将 PDF 文件拖拽到 `一键生成笔记.bat` 或桌面快捷方式上
-   - 生成的笔记保存在 `notes/` 文件夹
-
-### macOS 用户
-
-1. **初始化项目**（仅需一次）
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -e .
-   python3 创建桌面快捷方式.py
-   ```
-
-2. **使用方法**
-   - 双击 `一键生成笔记.command` 或将 PDF 拖拽到图标上
-   - 生成的笔记保存在 `notes/` 文件夹
-
-### Linux 用户
-
-1. **初始化项目**（仅需一次）
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -e .
-   python3 创建桌面快捷方式.py
-   ```
-
-2. **使用方法**
-   - 双击桌面快捷方式或将 PDF 拖拽到图标上
-   - 生成的笔记保存在 `notes/` 文件夹
-
-## 安装
+## 🚀 快速安装（Windows）
 
 ### 前置要求
 
-- Python 3.9 或更高版本
-- pip 包管理器
+- **Windows 10/11**
+- **Python 3.9 或更高版本**（[下载 Python](https://www.python.org/downloads/)）
+  - 安装时请勾选 **"Add Python to PATH"**
 
 ### 安装步骤
 
-1. 克隆或下载项目
+**方式一：一键安装（推荐）**
+
+双击项目目录中的 `install.bat`，脚本会自动：
+
+1. ✅ 检测 Python 环境
+2. ✅ 创建虚拟环境（venv）
+3. ✅ 安装所有依赖
+4. ✅ 创建桌面快捷方式
+5. ✅ 引导配置 API 密钥和 Obsidian Vault 路径
+
+> 💡 **提示**：安装完成后，桌面上会出现两个快捷方式：
+> - **PDF笔记生成器** — 拖拽模式（将 PDF 拖到图标上）
+> - **PDF笔记生成器(GUI)** — 图形界面（双击打开）
+
+**方式二：手动安装**
 
 ```bash
-cd noter
-```
-
-2. 创建虚拟环境（推荐）
-
-```bash
+# 1. 创建虚拟环境
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或
-venv\Scripts\activate  # Windows
-```
 
-3. 安装依赖
+# 2. 激活虚拟环境
+venv\Scripts\activate
 
-```bash
+# 3. 安装依赖
 pip install -e .
 ```
 
-## 配置
+---
+
+## ⚙️ 配置
 
 ### 1. 配置 API 密钥
 
-复制 `.env.example` 到 `.env` 并填入你的 API 密钥：
+复制 `.env.example` 为 `.env`，填入你的 API 密钥：
 
 ```bash
-cp .env.example .env
+copy .env.example .env
 ```
 
 编辑 `.env` 文件：
 
-```env
-# OpenAI API
-OPENAI_API_KEY=sk-your-openai-api-key-here
-
-# 或 Claude API
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
-
-# 或 Kimi API
+```ini
+# Kimi（推荐，性价比高）
 KIMI_API_KEY=your-kimi-api-key-here
 
-# 默认提供商
-DEFAULT_PROVIDER=openai
+# 或 OpenAI
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# 或 Claude
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+
+# 默认 AI 提供商
+DEFAULT_PROVIDER=kimi
 ```
 
-### 2. 配置应用设置（可选）
+> 🔑 **获取 API Key**：
+> - Kimi：[https://platform.moonshot.cn/](https://platform.moonshot.cn/)
+> - OpenAI：[https://platform.openai.com/](https://platform.openai.com/)
+> - Claude：[https://console.anthropic.com/](https://console.anthropic.com/)
 
-复制并编辑配置文件：
+### 2. 配置 Obsidian Vault（可选）
+
+如果使用 Obsidian 输出模式，需要配置 Vault 路径：
+
+- **GUI 模式**：在界面的 Obsidian 面板中填写 Vault 根目录路径
+- **安装时配置**：运行 `install.bat` 时选择配置 Vault 路径
+
+> Vault 结构要求：
+> ```
+> 📁 Obsidian/
+>  ├── 📁 Chemistry/          ← 学科分类文件夹
+>  │   ├── 📁 Quantum-Chemistry/  ← 课程文件夹
+>  │   │   └── qmLecture 4.md
+>  │   └── 📁 Organic-Chemistry/
+>  └── 📁 Mathematics/
+>      └── 📁 Calculus/
+> ```
+
+---
+
+## 🎯 使用方法
+
+### 方式一：拖拽模式（最快）
+
+1. 将 PDF 文件拖到桌面 **「PDF笔记生成器」** 图标上
+2. 程序自动处理，生成的笔记保存在 `notes/` 文件夹
+3. 支持同时拖拽多个 PDF 文件批量处理
+
+### 方式二：GUI 图形界面（推荐）
+
+1. 双击桌面 **「PDF笔记生成器(GUI)」** 图标
+2. 在界面中：
+
+   | 步骤 | 操作 |
+   |------|------|
+   | ① | 拖拽 PDF 文件到拖放区域，或点击选择文件 |
+   | ② | 选择 AI 提供商（Kimi / OpenAI / Claude） |
+   | ③ | 选择输出格式（Word / Markdown / HTML / **Obsidian**） |
+   | ④ | 选择 Obsidian 笔记模板和 Vault 路径（仅 Obsidian 模式） |
+   | ⑤ | 点击 **「开始生成」** |
+
+3. 处理完成后，可在设置的输出文件夹中找到笔记
+
+### 方式三：命令行模式
 
 ```bash
-cp config/settings.yaml.example config/settings.yaml
-```
+# 激活虚拟环境
+venv\Scripts\activate
 
-### 3. 自定义提示词（可选）
-
-编辑 `config/prompts.yaml` 可以自定义 AI 总结的提示词模板。
-
-## 使用方法
-
-### 检查配置
-
-```bash
-pdf-summarizer config-check
-```
-
-### 处理单个 PDF 文件
-
-```bash
-# 使用默认提供商
-pdf-summarizer process path/to/your.pdf
+# 处理单个 PDF（生成 Word 文档）
+pdf-summarizer process 课件.pdf
 
 # 指定 AI 提供商
-pdf-summarizer process path/to/your.pdf --provider claude
+pdf-summarizer process 课件.pdf --provider kimi
 
-# 指定输出路径
-pdf-summarizer process path/to/your.pdf --output notes.docx
+# 生成 Obsidian 笔记
+pdf-summarizer process 课件.pdf \
+    --format obsidian \
+    --template config/templates/quantum-template.md \
+    --course "量子化学" \
+    --vault "E:\Obsidian\collegenote"
+
+# 批量处理目录
+pdf-summarizer batch PDF课件文件夹/
 ```
 
-### 批量处理目录
+---
 
-```bash
-# 处理目录下所有 PDF
-pdf-summarizer batch path/to/pdfs/
+## 📖 输出格式说明
 
-# 递归处理子目录
-pdf-summarizer batch path/to/pdfs/ --recursive
+### Word 文档（docx）
 
-# 指定 AI 提供商
-pdf-summarizer batch path/to/pdfs/ --provider kimi
-```
+默认输出格式，包含结构化笔记：
+- 核心概念与定义
+- 知识点详解
+- 重点难点
+- 复习建议
 
-### 命令行选项
+### Obsidian 笔记（obsidian）
 
-```
-pdf-summarizer [OPTIONS] COMMAND
-
-Commands:
-  process       处理单个PDF文件
-  batch         批量处理目录中的PDF文件
-  config-check  检查配置状态
-
-Options:
-  --version     显示版本信息
-  --verbose     显示详细日志
-```
-
-## 输出示例
-
-生成的 Word 文档包含以下结构：
+输出格式化的 Markdown 笔记，直接保存到 Obsidian Vault：
 
 ```
-课程笔记
-来源: example.pdf
-
-核心概念
-1. 第一个核心概念...
-2. 第二个核心概念...
-
-知识点详解
-### 概念定义
-...
-
-### 关键特征
-...
-
-重点难点
-- 考点一
-- 考点二
-
-复习建议
-- 建议一
-- 建议二
+📁 Vault/Chemistry/Quantum-Chemistry/
+  └── qmLecture 4.md          ← AI 生成的笔记
 ```
 
-## 项目结构
+**Obsidian 模式的特殊功能：**
+- 笔记模板驱动（自定义 `.md` 模板）
+- LaTeX 公式自动修复（`\(...\)` → `$...$`，清除多余 `$`）
+- 公式规范检查（大括号匹配、`\$` 转义清理）
+- 详细规则见 [config/latex_format_rules.md](config/latex_format_rules.md)
+
+---
+
+## 📁 项目结构
 
 ```
 noter/
-├── src/pdf_summarizer/     # 源代码
-│   ├── cli.py              # 命令行入口
-│   ├── config.py           # 配置管理
-│   ├── pdf_reader.py       # PDF 读取
-│   ├── ai_client.py        # AI 客户端
-│   ├── summarizer.py       # 总结逻辑
-│   ├── docx_writer.py      # Word 输出
-│   └── models.py           # 数据模型
-├── config/                 # 配置文件
-│   ├── settings.yaml.example
-│   └── prompts.yaml
-├── tests/                  # 测试文件
-├── .env.example           # API 密钥模板
-├── requirements.txt       # 依赖列表
-├── pyproject.toml         # 项目配置
-└── README.md
+├── gui_launcher.py              # GUI 入口
+├── gui_launcher/                # GUI 组件
+│   ├── obsidian_panel.py        # Obsidian 配置面板
+│   ├── settings_page.py         # 设置页面
+│   └── ...
+├── src/pdf_summarizer/          # 核心代码
+│   ├── cli.py                   # 命令行入口
+│   ├── obsidian_generator.py    # Obsidian 笔记生成 + LaTeX 修复
+│   ├── vault_indexer.py         # Obsidian Vault 扫描
+│   └── ...
+├── config/                      # 配置文件
+│   ├── prompts.yaml             # AI 提示词模板
+│   ├── latex_format_rules.md    # LaTeX 格式规范（发给 AI 参考）
+│   └── templates/               # 笔记模板
+├── install.bat                  # 一键安装脚本
+├── uninstall.bat                # 卸载脚本
+├── launch_noter.bat             # 启动 GUI
+└── 一键生成笔记.bat             # 拖拽启动入口
 ```
 
-## 支持的 AI 提供商
+---
 
-| 提供商 | 标识 | 默认模型 |
-|--------|------|----------|
-| OpenAI | `openai` | gpt-4o |
-| Claude | `claude` | claude-sonnet-4-6-20250514 |
-| Kimi | `kimi` | moonshot-v1-8k |
+## ❓ 常见问题
 
-## 开发
+### Q: 打开软件后提示"未配置 API Key"？
 
-### 运行测试
+A: 点击界面右上角的 **「设置」** 按钮，在 AI 设置页面填入你的 API Key。
 
-```bash
-pip install -e ".[dev]"
-pytest
-```
+### Q: Obsidian 模式下的公式乱码？
 
-### 代码结构说明
+A: 程序已内置 LaTeX 修复功能，会自动处理常见的公式格式问题。详细规则见 [config/latex_format_rules.md](config/latex_format_rules.md)。
 
-- `PDFReader` - PDF 文本提取，使用 pdfplumber 库
-- `BaseAIClient` - AI 客户端抽象基类，支持扩展新提供商
-- `Summarizer` - 核心处理逻辑，协调各模块工作
-- `DocxWriter` - Word 文档生成，使用 python-docx 库
+### Q: 找不到输出文件？
 
-## 许可证
+A: 默认输出在项目目录的 `notes/` 文件夹。可在设置中自定义输出路径。
+
+### Q: 批量处理时某个文件失败？
+
+A: 程序会跳过失败的文件继续处理，日志会显示具体错误原因。
+
+---
+
+## 📝 许可证
 
 MIT License

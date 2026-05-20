@@ -266,6 +266,27 @@ if /i not "!CONFIG_API!"=="n" (
     pdf-summarizer config --setup
 )
 
+:: 询问是否配置 Obsidian Vault 路径
+echo.
+set /p "CONFIG_VAULT=是否配置 Obsidian Vault 路径？(y/N): "
+if /i "!CONFIG_VAULT!"=="y" (
+    echo.
+    echo 请输入你的 Obsidian Vault 根目录路径
+    echo （例如：C:\Users\用户名\Obsidian\collegenote）
+    echo.
+    set /p "VAULT_PATH=> "
+    if not "!VAULT_PATH!"=="" (
+        if exist "!VAULT_PATH!" (
+            echo         [✓] Vault 路径有效
+            echo.
+            echo 路径已记录。启动 GUI 后会自动填充此路径。
+            echo 你也可以稍后在 GUI 的设置页面中修改。
+        ) else (
+            echo         [!] 路径不存在，可稍后在 GUI 中手动设置
+        )
+    )
+)
+
 :: 询问是否打开项目目录
 echo.
 set /p "OPEN_DIR=是否打开项目目录？(Y/n): "

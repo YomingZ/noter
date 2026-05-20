@@ -49,8 +49,6 @@ from gui_launcher.file_card import FileCard
 from gui_launcher.file_list_area import FileListArea
 from gui_launcher.settings_page import SettingsPage
 
-DEFAULT_OBSIDIAN_VAULT = Path(r"E:\obsidianwithclaude\Obsidian")
-
 settings_manager = SettingsManager()
 
 
@@ -408,7 +406,7 @@ class ModernMainWindow(QMainWindow):
         """Open file dialog to select an Obsidian markdown template."""
         from PyQt6.QtWidgets import QFileDialog
         vault_path = self.obsidian_panel.vault_edit.text().strip()
-        start_dir = vault_path if vault_path and Path(vault_path).is_dir() else str(DEFAULT_OBSIDIAN_VAULT)
+        start_dir = vault_path if vault_path and Path(vault_path).is_dir() else str(Path.home())
         path, _ = QFileDialog.getOpenFileName(
             self, "选择笔记模板", start_dir,
             "Markdown 文件 (*.md);;所有文件 (*)"
@@ -420,7 +418,7 @@ class ModernMainWindow(QMainWindow):
         """Open folder dialog to select Obsidian vault directory."""
         from PyQt6.QtWidgets import QFileDialog
         current = self.obsidian_panel.vault_edit.text().strip()
-        start_dir = current if current and Path(current).is_dir() else str(DEFAULT_OBSIDIAN_VAULT)
+        start_dir = current if current and Path(current).is_dir() else str(Path.home())
         path = QFileDialog.getExistingDirectory(
             self, "选择 Obsidian Vault 目录", start_dir
         )
