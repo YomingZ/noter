@@ -36,6 +36,7 @@ class SettingsManager:
         "storage": {
             "output_folder": "",
             "keep_markdown": True,
+            "obsidian_vault_default": "",
         },
         "interface": {
             "theme": "system",

@@ -209,10 +209,10 @@ class ModernMainWindow(QMainWindow):
         self.settings_page.applyClicked.connect(self.on_apply_clicked)
         self.pages.addWidget(self.settings_page)
 
-        # 加载已保存的 Obsidian vault 路径
-        saved_vault = settings_manager.get("storage", "obsidian_vault", default="")
-        if saved_vault:
-            self.obsidian_panel.vault_edit.setText(saved_vault)
+        # 加载默认 Obsidian Vault 路径（每次启动用默认值覆盖）
+        default_vault = settings_manager.get("storage", "obsidian_vault_default", default="")
+        if default_vault:
+            self.obsidian_panel.vault_edit.setText(default_vault)
 
         # 默认显示主页面
         self.pages.setCurrentIndex(0)
@@ -405,8 +405,8 @@ class ModernMainWindow(QMainWindow):
     def _browse_obsidian_template(self):
         """Open file dialog to select an Obsidian markdown template."""
         from PyQt6.QtWidgets import QFileDialog
-        vault_path = self.obsidian_panel.vault_edit.text().strip()
-        start_dir = vault_path if vault_path and Path(vault_path).is_dir() else str(Path.home())
+        default_vault = settings_manager.get("storage", "obsidian_vault_default", default="")
+        start_dir = default_vault if default_vault and Path(default_vault).is_dir() else str(Path.home())
         path, _ = QFileDialog.getOpenFileName(
             self, "选择笔记模板", start_dir,
             "Markdown 文件 (*.md);;所有文件 (*)"
@@ -417,8 +417,8 @@ class ModernMainWindow(QMainWindow):
     def _browse_obsidian_vault(self):
         """Open folder dialog to select Obsidian vault directory."""
         from PyQt6.QtWidgets import QFileDialog
-        current = self.obsidian_panel.vault_edit.text().strip()
-        start_dir = current if current and Path(current).is_dir() else str(Path.home())
+        default_vault = settings_manager.get("storage", "obsidian_vault_default", default="")
+        start_dir = default_vault if default_vault and Path(default_vault).is_dir() else str(Path.home())
         path = QFileDialog.getExistingDirectory(
             self, "选择 Obsidian Vault 目录", start_dir
         )
@@ -510,9 +510,6 @@ class ModernMainWindow(QMainWindow):
             obsidian_template, obsidian_course, obsidian_vault = self.obsidian_panel.get_values()
         else:
             obsidian_template, obsidian_course, obsidian_vault = None, None, None
-        # 保存 vault 路径供下次使用
-        if obsidian_vault:
-            settings_manager.set("storage", "obsidian_vault", obsidian_vault)
 
         # 显示调试信息
         self.log_panel.append_log("🚀 开始处理...", "info")

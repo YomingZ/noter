@@ -274,6 +274,17 @@ class SettingsPage(QWidget):
         self.keep_md_cb = self.create_checkbox("保留 Markdown 文件")
         storage_layout.addWidget(self.keep_md_cb)
 
+        vault_widget = QWidget()
+        vault_layout = QHBoxLayout(vault_widget)
+        vault_layout.setContentsMargins(0, 0, 0, 0)
+        vault_layout.setSpacing(8)
+        self.vault_input = self.create_input("留空则每次手动选择，设置后自动填充")
+        vault_layout.addWidget(self.vault_input, 1)
+        self.vault_browse_btn = self.create_button("浏览")
+        self.vault_browse_btn.clicked.connect(self.browse_vault)
+        vault_layout.addWidget(self.vault_browse_btn)
+        storage_layout.addLayout(self._create_row("Obsidian Vault", vault_widget))
+
         layout.addWidget(storage_group)
 
         # ── Interface ──
@@ -408,6 +419,11 @@ class SettingsPage(QWidget):
         if path:
             self.folder_input.setText(path)
 
+    def browse_vault(self):
+        path = QFileDialog.getExistingDirectory(self, "选择 Obsidian Vault 根目录")
+        if path:
+            self.vault_input.setText(path)
+
     def on_profile_changed(self, profile_name: str):
         if profile_name and profile_name != settings_manager.current_profile:
             if settings_manager.load_profile(profile_name):
@@ -490,6 +506,9 @@ class SettingsPage(QWidget):
         self.folder_input.setText(
             settings_manager.get("storage", "output_folder", default="")
         )
+        self.vault_input.setText(
+            settings_manager.get("storage", "obsidian_vault_default", default="")
+        )
         self.keep_md_cb.setChecked(
             settings_manager.get("storage", "keep_markdown", default=True)
         )
@@ -531,6 +550,7 @@ class SettingsPage(QWidget):
         )
 
         settings_manager.set("storage", "output_folder", self.folder_input.text())
+        settings_manager.set("storage", "obsidian_vault_default", self.vault_input.text())
         settings_manager.set(
             "storage", "keep_markdown", self.keep_md_cb.isChecked()
         )
