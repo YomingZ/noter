@@ -206,8 +206,7 @@ if exist "gui_launcher.py" (
     powershell -Command ^
         "$ws = New-Object -ComObject WScript.Shell; ^
          $s = $ws.CreateShortcut('!GUI_SHORTCUT!'); ^
-         $s.TargetPath = '!INSTALL_DIR!venv\Scripts\pythonw.exe'; ^
-         $s.Arguments = 'gui_launcher.py'; ^
+         $s.TargetPath = '!INSTALL_DIR!launch_noter.bat'; ^
          $s.WorkingDirectory = '!INSTALL_DIR!'; ^
          $s.Description = 'PDF备考笔记生成器 GUI版'; ^
          $s.Save()"
