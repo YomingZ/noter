@@ -54,14 +54,27 @@ class ObsidianNoteGenerator:
         self._validate_inputs(template_path, vault_root)
 
         template_content = self._load_template(template_path)
+
+        placeholder = "{{content}}"
+        has_placeholder = placeholder in template_content
+
         user_prompt = self._build_prompt(template_content, document)
 
         raw_response = self._call_ai_with_retry(user_prompt, use_cache)
 
-        output_file = self._write_to_vault(
-            raw_response, vault_root, course_name,
-            output_name or document.file_path.stem,
-        )
+        if has_placeholder:
+            before, after = template_content.split(placeholder, 1)
+            fixed_content = ObsidianNoteGenerator._fix_latex_for_obsidian(raw_response)
+            final_content = before + "\n" + fixed_content + "\n" + after
+            output_file = self._write_to_vault(
+                final_content, vault_root, course_name,
+                output_name or document.file_path.stem,
+            )
+        else:
+            output_file = self._write_to_vault(
+                raw_response, vault_root, course_name,
+                output_name or document.file_path.stem,
+            )
 
         result.output_file = output_file
         result.success = True
@@ -110,17 +123,21 @@ class ObsidianNoteGenerator:
         )
 
         full_text = document.get_full_text()
+
+        structure_skeleton = self._extract_template_structure(template_content)
         user_prompt = instruction_template.replace(
-            "{template_content}", template_content
+            "{template_content}", structure_skeleton
         ).replace("{content}", full_text)
 
         estimated_tokens = len(user_prompt) / CHARS_PER_TOKEN
         if estimated_tokens > self._max_tokens:
             logger.info(
-                "Content too large (%.0f tokens), sending template structure only...",
+                "Content too large (%.0f tokens), further truncating template...",
                 estimated_tokens,
             )
-            structure_skeleton = self._extract_template_structure(template_content)
+            structure_skeleton = self._extract_template_structure(
+                template_content, aggressive=True
+            )
             user_prompt = instruction_template.replace(
                 "{template_content}", structure_skeleton
             ).replace("{content}", full_text)
@@ -574,22 +591,44 @@ class ObsidianNoteGenerator:
         return output_file
 
     @staticmethod
-    def _extract_template_structure(template_content: str) -> str:
+    def _extract_template_structure(template_content: str, aggressive: bool = False) -> str:
         lines = template_content.split("\n")
         skeleton_lines = []
         for line in lines:
             stripped = line.strip()
-            if (stripped.startswith("#")
-                    or stripped.startswith("---")
-                    or stripped.startswith("|")
-                    or stripped.startswith("- ")
-                    or stripped.startswith("* ")
-                    or stripped.startswith(">")
-                    or stripped.startswith("$")
-                    or stripped.startswith("![[")
-                    or stripped.startswith("```")
-                    or stripped.startswith("\\")
-                    or stripped == ""
-                    or stripped.startswith("【")):
+
+            if aggressive:
+                if stripped.startswith("#"):
+                    skeleton_lines.append(line)
+                elif stripped == "":
+                    skeleton_lines.append("")
+                continue
+
+            if stripped.startswith("#"):
                 skeleton_lines.append(line)
+            elif stripped.startswith("---"):
+                skeleton_lines.append(line)
+            elif stripped.startswith("```"):
+                skeleton_lines.append(line)
+            elif stripped.startswith("$$"):
+                skeleton_lines.append(line)
+            elif stripped.startswith("|"):
+                if stripped.count("|") >= 3 and "--" in stripped:
+                    skeleton_lines.append(line)
+                elif not any(c.isalnum() for c in stripped.replace("|", "").replace(" ", "")):
+                    skeleton_lines.append(line)
+                else:
+                    parts = stripped.split("|")
+                    skeleton_lines.append("| " + " | ".join([""] * (len(parts) - 2)) + " |")
+            elif stripped.startswith("![[") or stripped.startswith("【"):
+                skeleton_lines.append(line)
+            elif stripped.startswith("- ["):
+                skeleton_lines.append("- [ ] ")
+            elif stripped.startswith("- ") or stripped.startswith("* "):
+                skeleton_lines.append("- ")
+            elif stripped.startswith("> "):
+                skeleton_lines.append("> ")
+            elif stripped == "":
+                skeleton_lines.append("")
+
         return "\n".join(skeleton_lines)
