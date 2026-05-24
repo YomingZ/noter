@@ -64,19 +64,31 @@ class ObsidianNoteGenerator:
         estimated_tokens = len(full_text) / CHARS_PER_TOKEN
 
         raw_response: str
-        if estimated_tokens > self._max_tokens:
-            raw_response = self._generate_with_chunking(full_text, template_content, has_placeholder, use_cache)
-        else:
-            user_prompt = self._build_prompt(template_content, full_text, has_placeholder)
-            raw_response = self._call_ai_with_retry(user_prompt, use_cache)
-
-        images_dir: Optional[Path] = None
+        image_info = ""
         if document.has_images():
             target_dir = self._resolve_target_dir(vault_root, course_name)
             images_dir = self._save_vault_images(document, target_dir)
             if images_dir:
                 rel_path = images_dir.relative_to(target_dir)
-                raw_response = self._inject_image_references(raw_response, rel_path, pages_total=len(document.pages))
+                pages_list = ", ".join(
+                    f"![[{rel_path}/page{p.page_number:03d}_00.png]]"
+                    for p in document.pages
+                )
+                image_info = (
+                    "\n\n课件页面图片已保存到 `_images/` 目录。\n"
+                    "可用图片引用：\n"
+                    + "\n".join(
+                        f"  - ![[{rel_path}/page{p.page_number:03d}_00.png]] (第{p.page_number}页)"
+                        for p in document.pages
+                    ) +
+                    "\n请选择与知识点相关的关键图片插入笔记中（如势能图、波函数图等），不要无差别插入所有图片。"
+                )
+
+        if estimated_tokens > self._max_tokens:
+            raw_response = self._generate_with_chunking(full_text, template_content, has_placeholder, use_cache, image_info)
+        else:
+            user_prompt = self._build_prompt(template_content, full_text, has_placeholder, image_info)
+            raw_response = self._call_ai_with_retry(user_prompt, use_cache)
 
         if has_placeholder:
             before, after = template_content.split(placeholder, 1)
@@ -102,7 +114,7 @@ class ObsidianNoteGenerator:
         return indexer.resolve_course_path(course_name)
 
     def _generate_with_chunking(
-        self, full_text: str, template_content: str, has_placeholder: bool, use_cache: bool
+        self, full_text: str, template_content: str, has_placeholder: bool, use_cache: bool, image_info: str = ""
     ) -> str:
         logger.info(
             "Content too large (%.0f tokens), chunking...",
@@ -115,11 +127,11 @@ class ObsidianNoteGenerator:
         for i, chunk in enumerate(chunks):
             logger.info("Processing chunk %d/%d...", i + 1, len(chunks))
             if i == 0:
-                chunk_prompt = self._build_prompt(template_content, chunk, has_placeholder)
+                chunk_prompt = self._build_prompt(template_content, chunk, has_placeholder, image_info)
             else:
                 chunk_prompt = (
                     "以下是课件内容的一部分（第{}部分/共{}部分），请继续生成对应的笔记内容：\n\n{}"
-                ).format(i + 1, len(chunks), chunk)
+                ).format(i + 1, len(chunks), chunk) + image_info
 
             summary = self._call_ai_with_retry(chunk_prompt, use_cache)
             partial_summaries.append(summary)
@@ -134,6 +146,7 @@ class ObsidianNoteGenerator:
         )
         for i, s in enumerate(partial_summaries):
             merge_prompt += f"--- 第{i + 1}部分 ---\n{s}\n\n"
+        merge_prompt += image_info
 
         return self._call_ai_with_retry(merge_prompt, use_cache)
 
@@ -184,38 +197,6 @@ class ObsidianNoteGenerator:
             return images_dir
         return None
 
-    @staticmethod
-    def _inject_image_references(text: str, rel_path: Path, pages_total: int = 1) -> str:
-        lines = text.split("\n")
-        result = []
-        image_inserted = False
-
-        for line in lines:
-            stripped = line.strip()
-
-            if re.match(r'^!\[\[', stripped):
-                result.append(line)
-                continue
-
-            if not image_inserted and re.match(r'^# ', stripped):
-                result.append(line)
-                result.append("")
-                for pno in range(1, pages_total + 1):
-                    result.append(f"![[{rel_path}/page{pno:03d}_00.png]]")
-                result.append("")
-                image_inserted = True
-                continue
-
-            result.append(line)
-
-        if not image_inserted:
-            result.append("")
-            for pno in range(1, pages_total + 1):
-                result.append(f"![[{rel_path}/page{pno:03d}_00.png]]")
-            result.append("")
-
-        return "\n".join(result)
-
     def _validate_inputs(self, template_path: Path, vault_root: Path):
         if not template_path.exists():
             raise FileNotFoundError(
@@ -243,7 +224,7 @@ class ObsidianNoteGenerator:
 
         return content
 
-    def _build_prompt(self, template_content: str, content_text: str, has_placeholder: bool) -> str:
+    def _build_prompt(self, template_content: str, content_text: str, has_placeholder: bool, image_info: str = "") -> str:
         from pdf_summarizer.config import config
         from pdf_summarizer.summarizer import Summarizer
 
@@ -257,9 +238,10 @@ class ObsidianNoteGenerator:
                 "课件内容：\n{content}"
             )
             structure_skeleton = self._extract_template_structure(template_content, aggressive=True)
-            return instruction_template.replace(
+            base = instruction_template.replace(
                 "{template_content}", structure_skeleton
             ).replace("{content}", content_text)
+            return base + image_info
 
         instruction_template = obsidian_cfg.get(
             "template_instruction",
@@ -284,7 +266,7 @@ class ObsidianNoteGenerator:
                 "{template_content}", structure_skeleton
             ).replace("{content}", content_text)
 
-        return user_prompt
+        return user_prompt + image_info
 
     def _call_ai_with_retry(self, user_prompt: str, use_cache: bool) -> str:
         from pdf_summarizer.config import config
