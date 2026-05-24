@@ -92,15 +92,16 @@ class ObsidianNoteGenerator:
 
         if has_placeholder:
             before, after = template_content.split(placeholder, 1)
-            fixed_content = ObsidianNoteGenerator._fix_latex_for_obsidian(raw_response)
-            final_content = before + "\n" + fixed_content + "\n" + after
+            cleaned = ObsidianNoteGenerator._clean_ai_output(raw_response)
+            final_content = before + "\n" + cleaned + "\n" + after
             output_file = self._write_to_vault(
                 final_content, vault_root, course_name,
                 output_name or document.file_path.stem,
             )
         else:
+            cleaned = ObsidianNoteGenerator._clean_ai_output(raw_response)
             output_file = self._write_to_vault(
-                raw_response, vault_root, course_name,
+                cleaned, vault_root, course_name,
                 output_name or document.file_path.stem,
             )
 
@@ -493,6 +494,26 @@ class ObsidianNoteGenerator:
                 text,
             )
 
+        return text
+
+    @staticmethod
+    def _clean_ai_output(text: str) -> str:
+        lines = text.split("\n")
+        result = []
+        skip_instructions = False
+        for line in lines:
+            stripped = line.strip()
+            if "课件页面图片已保存到" in stripped or "可用图片引用" in stripped:
+                skip_instructions = True
+                continue
+            if skip_instructions:
+                if not stripped:
+                    skip_instructions = False
+                continue
+            result.append(line)
+        text = "\n".join(result)
+        text = re.sub(r'!\[\[_images/page\d+_00\.png\]\]\s*\(.*?\)', lambda m: m.group(0).split("(")[0].strip(), text)
+        text = re.sub(r'!\[\[_images/page\d+_00\.png\]\]\s*（.*?）', lambda m: m.group(0).split("（")[0].strip(), text)
         return text
 
     @staticmethod
