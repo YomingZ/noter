@@ -60,8 +60,9 @@ class ProcessingService:
         os.environ["KIMI_API_KEY"] = api_key if provider == "kimi" else ""
         os.environ["OPENAI_API_KEY"] = api_key if provider == "openai" else ""
         os.environ["ANTHROPIC_API_KEY"] = api_key if provider == "anthropic" else ""
+        os.environ["DEEPSEEK_API_KEY"] = api_key if provider == "deepseek" else ""
 
-        model = ai_config.get("model", "moonshot-v1-8k")
+        model = ai_config.get("model", "deepseek-chat")
         base_url = ai_config.get("base_url", "")
 
         if provider == "kimi":
@@ -77,6 +78,11 @@ class ProcessingService:
         elif provider == "anthropic":
             config.anthropic_api_key = api_key
             config.anthropic_model = model
+        elif provider == "deepseek":
+            config.deepseek_api_key = api_key
+            config.deepseek_model = model
+            if base_url:
+                config.deepseek_base_url = base_url
 
         config.default_provider = provider
         config.temperature = ai_config.get("temperature", 0.7)

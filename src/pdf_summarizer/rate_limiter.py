@@ -36,6 +36,11 @@ PROVIDER_RATE_LIMITS = {
         tokens_per_minute=50000,
         min_interval_seconds=1.0,
     ),
+    'deepseek': RateLimit(
+        requests_per_minute=500,
+        tokens_per_minute=200000,
+        min_interval_seconds=0.1,
+    ),
 }
 
 

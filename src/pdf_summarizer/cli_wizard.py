@@ -83,15 +83,16 @@ def _run_config_wizard():
     console.print("  1. OpenAI (GPT-4o)")
     console.print("  2. Claude (Anthropic)")
     console.print("  3. Kimi (Moonshot)")
+    console.print("  4. DeepSeek")
 
     provider_choice = typer.prompt(
-        "请输入选项 (1-3)",
-        default="3",
+        "请输入选项 (1-4)",
+        default="4",
         show_default=True,
     )
 
-    provider_map = {"1": "openai", "2": "claude", "3": "kimi"}
-    provider = provider_map.get(provider_choice, "kimi")
+    provider_map = {"1": "openai", "2": "claude", "3": "kimi", "4": "deepseek"}
+    provider = provider_map.get(provider_choice, "deepseek")
 
     console.print(f"\n[bold]配置 {provider.upper()} API Key：[/]")
 
@@ -118,6 +119,11 @@ def _run_config_wizard():
         console.print("  2. claude-opus-4-7")
         model_choice = typer.prompt("请输入选项", default="1")
         model_map = {"1": "claude-sonnet-4-6-20250514", "2": "claude-opus-4-7"}
+    elif provider == "deepseek":
+        console.print("  1. deepseek-chat (V3, 推荐)")
+        console.print("  2. deepseek-reasoner (R1)")
+        model_choice = typer.prompt("请输入选项", default="1")
+        model_map = {"1": "deepseek-chat", "2": "deepseek-reasoner"}
     else:
         console.print("  1. moonshot-v1-8k")
         console.print("  2. moonshot-v1-32k (推荐)")
@@ -148,7 +154,11 @@ ANTHROPIC_MODEL=claude-sonnet-4-6-20250514
 
 # Kimi Configuration
 KIMI_API_KEY={api_key if provider == "kimi" else ""}
-KIMI_MODEL={model}
+KIMI_MODEL={model if provider == "kimi" else "moonshot-v1-8k"}
+
+# DeepSeek Configuration
+DEEPSEEK_API_KEY={api_key if provider == "deepseek" else ""}
+DEEPSEEK_MODEL={model if provider == "deepseek" else "deepseek-chat"}
 
 # Output Settings
 OUTPUT_DIRECTORY={output_dir}

@@ -264,7 +264,7 @@ class ModernMainWindow(QMainWindow):
         provider_label.setStyleSheet(f"font-size: 12px; color: {Theme.get('text_secondary')}; background: transparent;")
         provider_layout.addWidget(provider_label)
         self.provider_combo = QComboBox()
-        self.provider_combo.addItems(["kimi", "openai", "claude"])
+        self.provider_combo.addItems(["kimi", "openai", "claude", "deepseek"])
         self.provider_combo.setStyleSheet(self._combo_style())
         provider_layout.addWidget(self.provider_combo)
         options_layout.addLayout(provider_layout)

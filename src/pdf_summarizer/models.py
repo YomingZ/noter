@@ -13,6 +13,7 @@ class AIProvider(str, Enum):
     OPENAI = "openai"
     CLAUDE = "claude"
     KIMI = "kimi"
+    DEEPSEEK = "deepseek"
 
 
 class AIConfig(BaseModel):

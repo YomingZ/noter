@@ -69,7 +69,7 @@ def process(
         "openai",
         "--provider",
         "-p",
-        help="AI提供商: openai, claude, kimi",
+        help="AI提供商: openai, claude, kimi, deepseek",
     ),
     output: Optional[Path] = typer.Option(
         None,
@@ -119,7 +119,7 @@ def process(
         ai_provider = AIProvider(provider)
     except ValueError:
         console.print(f"[red]错误: 不支持的AI提供商 '{provider}'[/]")
-        console.print("支持的提供商: openai, claude, kimi")
+        console.print("支持的提供商: openai, claude, kimi, deepseek")
         raise typer.Exit(1)
 
     # Validate obsidian-specific params
@@ -230,7 +230,7 @@ def batch(
         "openai",
         "--provider",
         "-p",
-        help="AI提供商: openai, claude, kimi",
+        help="AI提供商: openai, claude, kimi, deepseek",
     ),
     recursive: bool = typer.Option(
         False,
@@ -272,7 +272,7 @@ def batch(
         ai_provider = AIProvider(provider)
     except ValueError:
         console.print(f"[red]错误: 不支持的AI提供商 '{provider}'[/]")
-        console.print("支持的提供商: openai, claude, kimi")
+        console.print("支持的提供商: openai, claude, kimi, deepseek")
         raise typer.Exit(1)
 
     if output_format == "obsidian":
@@ -369,6 +369,7 @@ def config_check(
         ("OpenAI", settings.openai_api_key, settings.openai_model),
         ("Claude", settings.anthropic_api_key, settings.anthropic_model),
         ("Kimi", settings.kimi_api_key, settings.kimi_model),
+        ("DeepSeek", settings.deepseek_api_key, settings.deepseek_model),
     ]
 
     for name, key, model in providers:

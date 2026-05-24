@@ -286,6 +286,50 @@ class KimiClient(BaseAIClient):
         return self._call_api(system_prompt, text)
 
 
+class DeepSeekClient(BaseAIClient):
+    """DeepSeek API client (OpenAI-compatible)."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "deepseek-chat",
+        base_url: str = "https://api.deepseek.com",
+        **kwargs,
+    ):
+        super().__init__(api_key, model, "deepseek", **kwargs)
+        self.base_url = base_url
+        self._validate_api_key()
+
+    def _call_api(self, system_prompt: str, user_prompt: str) -> str:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+
+        logger.info(f"Calling DeepSeek API with model: {self.model}")
+
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+        )
+
+        return response.choices[0].message.content
+
+    def _call_multimodal_api(
+        self, system_prompt: str, content_parts: list[ContentPart]
+    ) -> str:
+        text = "\n".join(
+            p.text or "" for p in content_parts if p.type == "text"
+        )
+        if any(p.type == "image" for p in content_parts):
+            logger.warning("DeepSeek does not support image input, using text only")
+        return self._call_api(system_prompt, text)
+
+
 # Provider configurations
 PROVIDER_CONFIGS = {
     AIProvider.OPENAI: {
@@ -301,6 +345,11 @@ PROVIDER_CONFIGS = {
         'client_class': KimiClient,
         'default_model': 'moonshot-v1-8k',
         'base_url': 'https://api.moonshot.cn/v1',
+    },
+    AIProvider.DEEPSEEK: {
+        'client_class': DeepSeekClient,
+        'default_model': 'deepseek-chat',
+        'base_url': 'https://api.deepseek.com',
     },
 }
 

@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     kimi_base_url: str = "https://api.moonshot.cn/v1"
     kimi_model: str = "moonshot-v1-8k"
 
+    # DeepSeek Configuration
+    deepseek_api_key: str = ""
+    deepseek_base_url: str = "https://api.deepseek.com"
+    deepseek_model: str = "deepseek-chat"
+
     # Default Provider
     default_provider: str = "openai"
 
@@ -165,6 +170,10 @@ class ConfigManager:
             config["api_key"] = settings.kimi_api_key
             config["base_url"] = settings.kimi_base_url
             config["model"] = settings.kimi_model
+        elif provider == AIProvider.DEEPSEEK:
+            config["api_key"] = settings.deepseek_api_key
+            config["base_url"] = settings.deepseek_base_url
+            config["model"] = settings.deepseek_model
 
         return config
 
