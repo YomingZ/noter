@@ -57,12 +57,13 @@ class BaseAIClient(ABC):
         provider_models = vision_models.get(self.provider, [])
         return any(vm in self.model for vm in provider_models)
 
-    def generate(self, system_prompt: str, user_prompt: str) -> str:
+    def generate(self, system_prompt: str, user_prompt: str, use_cache: bool = True) -> str:
         """Generate text completion with rate limiting and caching."""
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-        if self._cache is not None:
-            cached = self._cache.get(full_prompt, self.provider, self.model)
+        if use_cache and self._cache is not None:
+            cache_key = f"{full_prompt}|max_tokens={self.max_tokens}"
+            cached = self._cache.get(cache_key, self.provider, self.model)
             if cached is not None:
                 return cached
 
@@ -74,8 +75,9 @@ class BaseAIClient(ABC):
         try:
             response = self._call_api(system_prompt, user_prompt)
 
-            if self._cache is not None:
-                self._cache.set(full_prompt, self.provider, self.model, response)
+            if use_cache and self._cache is not None:
+                cache_key = f"{full_prompt}|max_tokens={self.max_tokens}"
+                self._cache.set(cache_key, self.provider, self.model, response)
 
             return response
 
@@ -98,7 +100,8 @@ class BaseAIClient(ABC):
         full_prompt = f"{system_prompt}\n\n{' '.join(text_parts)}"
 
         if self._cache is not None:
-            cached = self._cache.get(full_prompt, self.provider, self.model)
+            cache_key = f"{full_prompt}|max_tokens={self.max_tokens}"
+            cached = self._cache.get(cache_key, self.provider, self.model)
             if cached is not None:
                 return cached
 
@@ -111,7 +114,8 @@ class BaseAIClient(ABC):
             response = self._call_multimodal_api(system_prompt, content_parts)
 
             if self._cache is not None:
-                self._cache.set(full_prompt, self.provider, self.model, response)
+                cache_key = f"{full_prompt}|max_tokens={self.max_tokens}"
+                self._cache.set(cache_key, self.provider, self.model, response)
 
             return response
 

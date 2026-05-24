@@ -98,10 +98,10 @@ class Summarizer:
             old_max = self._ai_client.max_tokens
             self._ai_client.max_tokens = max_tokens
             try:
-                return self._ai_client.generate(system_prompt, user_prompt)
+                return self._ai_client.generate(system_prompt, user_prompt, use_cache=use_cache)
             finally:
                 self._ai_client.max_tokens = old_max
-        return self._ai_client.generate(system_prompt, user_prompt)
+        return self._ai_client.generate(system_prompt, user_prompt, use_cache=use_cache)
 
     def _build_multimodal_parts(self, document: PDFDocument) -> list[ContentPart]:
         """Build ContentPart list with text and images for multimodal AI.

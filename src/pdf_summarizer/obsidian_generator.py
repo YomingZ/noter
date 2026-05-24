@@ -185,31 +185,34 @@ class ObsidianNoteGenerator:
         return None
 
     @staticmethod
-    def _inject_image_references(text: str, rel_path: Path) -> str:
+    def _inject_image_references(text: str, rel_path: Path, pages_total: int = 1) -> str:
         lines = text.split("\n")
         result = []
         image_inserted = False
-        image_count = 0
 
         for line in lines:
             stripped = line.strip()
 
             if re.match(r'^!\[\[', stripped):
                 result.append(line)
-                image_inserted = True
                 continue
 
-            if re.match(r'^## ', stripped) and not image_inserted and image_count == 0:
+            if not image_inserted and re.match(r'^# ', stripped):
                 result.append(line)
                 result.append("")
-                result.append(f"![[{rel_path}/page001_00.png]]")
+                for pno in range(1, pages_total + 1):
+                    result.append(f"![[{rel_path}/page{pno:03d}_00.png]]")
+                result.append("")
                 image_inserted = True
                 continue
 
-            if re.match(r'^# ', stripped):
-                image_count += 1
-
             result.append(line)
+
+        if not image_inserted:
+            result.append("")
+            for pno in range(1, pages_total + 1):
+                result.append(f"![[{rel_path}/page{pno:03d}_00.png]]")
+            result.append("")
 
         return "\n".join(result)
 
