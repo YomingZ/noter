@@ -186,6 +186,8 @@ obsidian_template:
     3. 保持和课件相同的教学顺序
     4. 如果课件被分块发送，最后需要将所有块合并成完整笔记
     5. 【重要】不要将课件中的表格(raw table data)原样复制到笔记中，请用清晰的文字描述替代
+    6. 【重要】不要在笔记中使用 Markdown 表格(| ... | ... |)来展示公式内容。
+       表格中的 LaTeX 公式在 Obsidian 中无法正常渲染。请改用普通段落和 $$...$$。
 
     --- 模板结构参考（仅保留层级标记，文字已全部清除）---
     {template_content}
@@ -208,6 +210,15 @@ obsidian_template:
       $$
       E = mc^2$$
     - 绝对禁止一行内出现两个 $$（如 $$内容$$）
+    - 【极其重要】\begin{cases}、\begin{aligned} 等环境必须放在 $$...$$ 内部，
+      不能先关掉 $$ 再写 \begin{cases}。正确用法：
+      $$
+      \psi(x) =
+      \begin{cases}
+      A e^{ikx} & x < 0 \\
+      B e^{-ikx} & x \geq 0
+      \end{cases}
+      $$
 
     【行内公式】用单个 $ 包裹：
     - 正确：$E = mc^2$、$\Psi(x,t)$、$\frac{h}{2\pi}$

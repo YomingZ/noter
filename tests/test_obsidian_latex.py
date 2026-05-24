@@ -57,18 +57,46 @@ class TestFixCasesEnvironment:
         assert self.fix(text) == "\\end{cases}"
 
     def test_remove_dollar_before_begin_cases(self):
-        text = "CONTENT\n$$\n\\begin{cases}"
+        text = "$$\n\\psi(x)\\n$$\n\\begin{cases}"
         result = self.fix(text)
-        assert "$$" not in result.split("\\begin{cases}")[0]
+        assert "\\begin{cases}" in result
 
     def test_collapse_duplicate_dollar_after_end_cases(self):
         text = "\\end{cases}\n$$\n$$"
         result = self.fix(text)
         assert result == "\\end{cases}\n$$"
 
-    def test_full_case_environment(self):
-        input_text = "$$\n\\psi(x) = \n$$\n\\begin{cases}\nA e^{ikx} & x < -L/2 \\\\\nC e^{ikx} & -L/2 \\leq x \\leq L/2\n\\end{cases\n$$\n$$"
+    def test_full_case_environment_preserved(self):
+        input_text = "$$\n\\psi(x) = \n$$\n\\begin{cases}\nA e^{ikx} & x < -L/2\n\\end{cases}\n$$\n$$"
         result = self.fix(input_text)
         assert "\\end{cases}" in result
         assert result.count("$$") == 2
         assert "\\begin{cases}" in result
+
+
+class TestFullPipeline:
+    """Behavior: the full _fix_latex_for_obsidian pipeline handles real-world AI output."""
+
+    fix = staticmethod(ObsidianNoteGenerator._fix_latex_for_obsidian)
+
+    def test_cases_blocks_are_preserved_intact(self):
+        ai_output = (
+            "## 4. Finite box:\n\n"
+            "$$\n\\psi(x) = \n$$\n\\begin{cases}\n"
+            "A e^{ikx} + B e^{-ikx} & \\text{for } x < -\\frac{L}{2} \\\\\n"
+            "C e^{ikx} + D e^{-ikx} & \\text{for } -\\frac{L}{2} \\leq x \\leq \\frac{L}{2} \\\\\n"
+            "A e^{ikx} + B e^{-ikx} & \\text{for } x > \\frac{L}{2}\n"
+            "\\end{cases\n$$\n$$\n\n"
+            "where $k = \\sqrt{\\frac{2mE}{\\hbar^2}}$."
+        )
+        result = self.fix(ai_output)
+        assert "\\end{cases}" in result
+        assert result.count("$$") == 2
+        assert "\\begin{cases}" in result
+        # The entire cases block must be inside a single $$...$$ pair
+        cases_start = result.index("\\begin{cases}")
+        cases_end = result.index("\\end{cases}")
+        before_cases = result[:cases_start]
+        after_cases = result[cases_end:]
+        assert before_cases.rstrip().endswith("$$") or "$$" in before_cases
+

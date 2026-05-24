@@ -331,12 +331,36 @@ class ObsidianNoteGenerator:
     @staticmethod
     def _fix_cases_environment(text: str) -> str:
         text = re.sub(r'\\end\{cases(?!\})', r'\\end{cases}', text)
-        text = re.sub(r'\n\$\$\n(\\begin\{cases\})', r'\n\1', text)
-        text = re.sub(r'(\\end\{cases\})\n\$\$\n\$\$', r'\1\n$$', text)
+        text = re.sub(r'(\$\$[^$]*?)\n\$\$\n(\\begin\{)', r'\1\n\2', text, flags=re.DOTALL)
+        text = re.sub(r'(\\end\{[^}]*\})\n\$\$\n\$\$', r'\1\n$$', text)
         return text
 
     @staticmethod
     def _normalize_dollar_blocks(text: str) -> str:
+        protected, placeholders = ObsidianNoteGenerator._protect_environment_blocks(text)
+        result = ObsidianNoteGenerator._run_normalize_dollar_blocks(protected)
+        for ph, original in placeholders.items():
+            result = result.replace(ph, original)
+        return result
+
+    @staticmethod
+    def _protect_environment_blocks(text: str) -> tuple[str, dict[str, str]]:
+        placeholders = {}
+        counter = [0]
+        def protect(m):
+            full = m.group(0)
+            inner = m.group(1)
+            if '\\begin{' in inner or '\\end{' in inner:
+                ph = f'__LATEXBLOCK_{counter[0]}__'
+                counter[0] += 1
+                placeholders[ph] = full
+                return ph
+            return full
+        protected = re.sub(r'\$\$(.*?)\$\$', protect, text, flags=re.DOTALL)
+        return protected, placeholders
+
+    @staticmethod
+    def _run_normalize_dollar_blocks(text: str) -> str:
         lines = text.split('\n')
         result = []
         in_block = False
