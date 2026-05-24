@@ -66,10 +66,10 @@ def process(
         exists=True,
     ),
     provider: str = typer.Option(
-        "openai",
+        "deepseek",
         "--provider",
         "-p",
-        help="AI提供商: openai, claude, kimi, deepseek",
+        help="AI提供商: openai, claude, kimi, deepseek（推荐 deepseek 用于 Obsidian 笔记生成）",
     ),
     output: Optional[Path] = typer.Option(
         None,
@@ -124,6 +124,8 @@ def process(
 
     # Validate obsidian-specific params
     if output_format == "obsidian":
+        if provider != "deepseek":
+            console.print("[dim]提示: Obsidian 笔记推荐使用 --provider deepseek，生成质量更高[/]")
         errors = []
         if not template:
             errors.append("obsidian 模式需要 --template（笔记模板 .md 文件）")
