@@ -45,3 +45,30 @@ class TestNormalizeDollarBlocks:
         text = "\\hat{H}\\Psi = E\\Psi"
         result = ObsidianNoteGenerator._fix_latex_for_obsidian(text)
         assert result is not None
+
+
+class TestFixCasesEnvironment:
+    """Behavior: _fix_cases_environment repairs broken cases environment."""
+
+    fix = staticmethod(ObsidianNoteGenerator._fix_cases_environment)
+
+    def test_fix_end_cases_missing_brace(self):
+        text = "\\end{cases"
+        assert self.fix(text) == "\\end{cases}"
+
+    def test_remove_dollar_before_begin_cases(self):
+        text = "CONTENT\n$$\n\\begin{cases}"
+        result = self.fix(text)
+        assert "$$" not in result.split("\\begin{cases}")[0]
+
+    def test_collapse_duplicate_dollar_after_end_cases(self):
+        text = "\\end{cases}\n$$\n$$"
+        result = self.fix(text)
+        assert result == "\\end{cases}\n$$"
+
+    def test_full_case_environment(self):
+        input_text = "$$\n\\psi(x) = \n$$\n\\begin{cases}\nA e^{ikx} & x < -L/2 \\\\\nC e^{ikx} & -L/2 \\leq x \\leq L/2\n\\end{cases\n$$\n$$"
+        result = self.fix(input_text)
+        assert "\\end{cases}" in result
+        assert result.count("$$") == 2
+        assert "\\begin{cases}" in result

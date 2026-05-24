@@ -324,9 +324,16 @@ class ObsidianNoteGenerator:
         text = ObsidianNoteGenerator._convert_begin_end_environments(text)
         text = ObsidianNoteGenerator._normalize_dollar_blocks(text)
         text = ObsidianNoteGenerator._fix_unbalanced_braces(text)
-        text = re.sub(r'\\end\{cases(?!\})', r'\\end{cases}', text)
+        text = ObsidianNoteGenerator._fix_cases_environment(text)
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
+
+    @staticmethod
+    def _fix_cases_environment(text: str) -> str:
+        text = re.sub(r'\\end\{cases(?!\})', r'\\end{cases}', text)
+        text = re.sub(r'\n\$\$\n(\\begin\{cases\})', r'\n\1', text)
+        text = re.sub(r'(\\end\{cases\})\n\$\$\n\$\$', r'\1\n$$', text)
+        return text
 
     @staticmethod
     def _normalize_dollar_blocks(text: str) -> str:
