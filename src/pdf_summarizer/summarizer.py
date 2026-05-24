@@ -93,7 +93,14 @@ class Summarizer:
         return ai_config.get("model", "")
 
     def _ai_generate(self, system_prompt: str, user_prompt: str,
-                     use_cache: bool = True) -> str:
+                     use_cache: bool = True, max_tokens: Optional[int] = None) -> str:
+        if max_tokens is not None:
+            old_max = self._ai_client.max_tokens
+            self._ai_client.max_tokens = max_tokens
+            try:
+                return self._ai_client.generate(system_prompt, user_prompt)
+            finally:
+                self._ai_client.max_tokens = old_max
         return self._ai_client.generate(system_prompt, user_prompt)
 
     def _build_multimodal_parts(self, document: PDFDocument) -> list[ContentPart]:

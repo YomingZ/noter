@@ -38,6 +38,12 @@ except ImportError:
     PDF2IMAGE_AVAILABLE = False
 
 try:
+    import fitz
+    FITZ_AVAILABLE = True
+except ImportError:
+    FITZ_AVAILABLE = False
+
+try:
     import pytesseract
     TESSERACT_AVAILABLE = True
 except ImportError:
@@ -201,7 +207,7 @@ class PDFExtractor:
             for p in pages:
                 all_blocks.extend(p.content_blocks)
 
-        if self.extract_images and PDF2IMAGE_AVAILABLE:
+        if self.extract_images and (PDF2IMAGE_AVAILABLE or FITZ_AVAILABLE):
             pages = self._extract_page_images(file_path, pages)
 
         chapters = self._build_chapters(all_blocks) if self.detect_structure else []
@@ -667,28 +673,48 @@ class PDFExtractor:
         """Extract each page as a base64-encoded PNG image.
 
         Images are stored in PDFPage.images_base64 for multimodal AI processing.
+        Tries pdf2image first (requires poppler), falls back to PyMuPDF.
         """
-        if not PDF2IMAGE_AVAILABLE:
+        if not PDF2IMAGE_AVAILABLE and not FITZ_AVAILABLE:
+            logger.warning("No image library available. Install poppler or PyMuPDF for image extraction.")
             return pages
 
-        try:
-            images = _pdf2image_convert(
-                pdf_path,
-                first_page=1,
-                last_page=len(pages),
-                dpi=150,
-            )
-            for i, img in enumerate(images):
-                if i < len(pages):
-                    buf = io.BytesIO()
-                    img.save(buf, format="PNG", optimize=True)
-                    b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
-                    pages[i].images_base64.append(b64_str)
-                    logger.debug(
-                        f"Page {pages[i].page_number}: image {len(b64_str)} bytes"
-                    )
-        except Exception as e:
-            logger.warning(f"Image extraction failed for {pdf_path}: {e}")
+        if PDF2IMAGE_AVAILABLE:
+            try:
+                images = _pdf2image_convert(
+                    pdf_path,
+                    first_page=1,
+                    last_page=len(pages),
+                    dpi=150,
+                )
+                for i, img in enumerate(images):
+                    if i < len(pages):
+                        buf = io.BytesIO()
+                        img.save(buf, format="PNG", optimize=True)
+                        b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+                        pages[i].images_base64.append(b64_str)
+                if any(p.images_base64 for p in pages):
+                    logger.info("Extracted %d page images via pdf2image", len(pages))
+                    return pages
+            except Exception as e:
+                logger.warning("pdf2image extraction failed: %s", e)
+
+        if FITZ_AVAILABLE:
+            try:
+                doc = fitz.open(str(pdf_path))
+                for i, page in enumerate(pages):
+                    if i >= len(doc):
+                        break
+                    pix = doc[i].get_pixmap(dpi=150)
+                    img_data = pix.tobytes("png")
+                    b64_str = base64.b64encode(img_data).decode("utf-8")
+                    page.images_base64.append(b64_str)
+                doc.close()
+                if any(p.images_base64 for p in pages):
+                    logger.info("Extracted %d page images via PyMuPDF", len(pages))
+                    return pages
+            except Exception as e:
+                logger.warning("PyMuPDF image extraction failed: %s", e)
 
         return pages
 

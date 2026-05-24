@@ -297,6 +297,7 @@ class ObsidianNoteGenerator:
             system_prompt=system,
             user_prompt=user_prompt,
             use_cache=use_cache,
+            max_tokens=16384,
         )
 
         if not raw_response or not raw_response.strip():
@@ -305,6 +306,7 @@ class ObsidianNoteGenerator:
                 system_prompt=system,
                 user_prompt=user_prompt,
                 use_cache=False,
+                max_tokens=16384,
             )
 
         if not raw_response or not raw_response.strip():
