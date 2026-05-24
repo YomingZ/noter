@@ -12,9 +12,15 @@ from pdf_summarizer.models import (
     PDFDocument,
     ProcessResult,
     BatchResult,
+    ContentPart,
 )
 from pdf_summarizer.pdf_reader import PDFExtractor
-from pdf_summarizer.ai_client import generate_summary, create_client, BaseAIClient
+from pdf_summarizer.ai_client import (
+    generate_summary,
+    generate_multimodal_summary,
+    create_client,
+    BaseAIClient,
+)
 from pdf_summarizer.docx_writer import DocxWriter
 from pdf_summarizer.output_formats import write_summary
 from pdf_summarizer.config import config
@@ -89,6 +95,31 @@ class Summarizer:
     def _ai_generate(self, system_prompt: str, user_prompt: str,
                      use_cache: bool = True) -> str:
         return self._ai_client.generate(system_prompt, user_prompt)
+
+    def _build_multimodal_parts(self, document: PDFDocument) -> list[ContentPart]:
+        """Build ContentPart list with text and images for multimodal AI.
+
+        Includes page images when available and the model supports vision.
+        """
+        parts: list[ContentPart] = []
+
+        full_text = document.get_full_text()
+        text_with_tables = full_text
+
+        parts.append(ContentPart(
+            type="text",
+            text=text_with_tables,
+        ))
+
+        if self._ai_client.supports_vision() and document.has_images():
+            for page in document.pages:
+                for b64_img in page.images_base64:
+                    parts.append(ContentPart(
+                        type="image",
+                        image_base64=b64_img,
+                    ))
+
+        return parts
 
     def process(
         self,
@@ -171,12 +202,30 @@ class Summarizer:
         if self._detected_subject and self._detected_subject != "default":
             user_prompt = config.get_subject_prompt(self._detected_subject)
 
+        has_images = document.has_images()
+        supports_vision = self._ai_client.supports_vision()
+        use_multimodal = has_images and supports_vision
+
         if estimated_tokens <= max_tokens:
+            if use_multimodal:
+                content_parts = self._build_multimodal_parts(document)
+                logger.info("Using multimodal generation with %d parts", len(content_parts))
+                return generate_multimodal_summary(
+                    content_parts=content_parts,
+                    provider=self.provider,
+                    use_cache=use_cache,
+                )
             return generate_summary(
                 content=full_text,
                 provider=self.provider,
                 use_cache=use_cache,
                 user_prompt=user_prompt,
+            )
+
+        if use_multimodal:
+            logger.info(
+                "Content too large for multimodal (%.0f tokens), falling back to text-only",
+                estimated_tokens,
             )
 
         logger.info(
@@ -294,24 +343,3 @@ class Summarizer:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             f.write(f"[{timestamp}] {pdf_file}\n")
             f.write(f"  Error: {error_message}\n\n")
-
-    # ---- Backward-compat delegation wrappers (for existing tests) ----
-
-    @property
-    def _parser(self):
-        return self.parser
-
-    def _parse_summary(self, source_file: str, raw_response: str):
-        return self.parser.parse(source_file, raw_response)
-
-    def _extract_list_items(self, text: str) -> list[str]:
-        return self.parser._extract_list_items(text)
-
-    def _extract_sections(self, text: str):
-        return self.parser._extract_sections(text)
-
-    def _extract_chinese_sections(self, text: str):
-        return self.parser._extract_chinese_sections(text)
-
-    def _extract_marker_content(self, text: str, marker: str) -> list[str]:
-        return self.parser._extract_marker_content(text, marker)

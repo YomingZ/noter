@@ -1,5 +1,6 @@
 """Pydantic data models for PDF Summarizer."""
 
+import base64
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -74,6 +75,8 @@ class PDFPage(BaseModel):
     text: str
     char_count: int = 0
     content_blocks: list[ContentBlock] = []
+    images_base64: list[str] = []
+    has_table: bool = False
 
     def model_post_init(self, __context):
         if not self.char_count:
@@ -88,6 +91,7 @@ class PDFDocument(BaseModel):
     pages: list[PDFPage] = []
     chapters: list[Chapter] = []
     total_chars: int = 0
+    is_scanned: bool = False
 
     def model_post_init(self, __context):
         if not self.total_chars:
@@ -96,14 +100,22 @@ class PDFDocument(BaseModel):
     def get_full_text(self) -> str:
         """Get all text from all pages."""
         if self.chapters:
-            return "\n\n".join(
-                f"## {ch.title}\n\n{ch.text}"
-                for ch in self.chapters
-            )
-        return "\n\n".join(
-            f"--- 第 {p.page_number} 页 ---\n{p.text}"
-            for p in self.pages
-        )
+            parts = []
+            for ch in self.chapters:
+                parts.append(f"## {ch.title}\n\n{ch.text}")
+                for block in ch.content_blocks:
+                    if block.block_type == "table":
+                        parts.append(f"\n[表格]\n{block.text}\n")
+            return "\n\n".join(parts)
+        parts = []
+        for p in self.pages:
+            page_header = f"--- 第 {p.page_number} 页 ---"
+            page_text = p.text
+            for block in p.content_blocks:
+                if block.block_type == "table" and block.text not in page_text:
+                    page_text += f"\n\n[表格]\n{block.text}"
+            parts.append(f"{page_header}\n{page_text}")
+        return "\n\n".join(parts)
 
     def get_chapters_text(self) -> list[dict]:
         """Get chapters as list of dicts for AI processing."""
@@ -111,6 +123,39 @@ class PDFDocument(BaseModel):
             {"title": ch.title, "content": ch.text, "level": ch.level.value}
             for ch in self.chapters
         ]
+
+    def has_images(self) -> bool:
+        """Check if any page has extracted images."""
+        return any(p.images_base64 for p in self.pages)
+
+
+class ContentPart(BaseModel):
+    """A part of multimodal content (text or image) for AI requests."""
+    type: str = "text"
+    text: Optional[str] = None
+    image_base64: Optional[str] = None
+
+    def to_openai_format(self) -> dict:
+        if self.type == "image":
+            return {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/png;base64,{self.image_base64}"
+                }
+            }
+        return {"type": "text", "text": self.text or ""}
+
+    def to_claude_format(self) -> dict:
+        if self.type == "image":
+            return {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": self.image_base64 or "",
+                }
+            }
+        return {"type": "text", "text": self.text or ""}
 
 
 class SummarySection(BaseModel):

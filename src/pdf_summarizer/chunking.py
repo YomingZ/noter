@@ -26,9 +26,40 @@ class ChunkingStrategy(ABC):
     def split(self, document: PDFDocument) -> list[str]:
         """Split document into text chunks for AI processing."""
 
-    @abstractmethod
-    def merge(self, partial_summaries: list[str]) -> str:
-        """Merge multiple partial summaries into one."""
+    def merge(self, partial_summaries: list[str], ai_generate_fn=None) -> str:
+        """Merge multiple partial summaries into one.
+
+        Falls back to simple concatenation when no AI function is provided.
+        Uses AI merge when available for coherent result.
+        """
+        if len(partial_summaries) == 1:
+            return partial_summaries[0]
+
+        if ai_generate_fn is None:
+            return "\n\n---\n\n".join(
+                f"### 部分 {i + 1}\n\n{s}"
+                for i, s in enumerate(partial_summaries)
+            )
+
+        logger.info("Merging %d partial summaries...", len(partial_summaries))
+
+        from pdf_summarizer.config import config
+        prompts = config.load_prompts()
+        system = prompts.get("system_prompt", "你是一位专业的教育内容分析师。")
+        merge_prompt = prompts.get(
+            "merge_prompt",
+            "以下是课件多个部分的总结笔记，请将它们合并整理成一份完整的结构化笔记：\n\n{content}"
+        )
+
+        combined = "\n\n---\n\n".join(
+            f"### 部分 {i + 1}\n\n{s}"
+            for i, s in enumerate(partial_summaries)
+        )
+
+        return ai_generate_fn(
+            system_prompt=system,
+            user_prompt=merge_prompt.replace("{content}", combined),
+        )
 
     def _summarize_chunk(self, content: str, ai_generate_fn) -> str:
         """Summarize a single chunk using the provided AI generate function."""
@@ -72,36 +103,6 @@ class ChapterChunker(ChunkingStrategy):
 
         return chunks
 
-    def merge(self, partial_summaries: list[str], ai_generate_fn=None) -> str:
-        if len(partial_summaries) == 1:
-            return partial_summaries[0]
-
-        if ai_generate_fn is None:
-            return "\n\n---\n\n".join(
-                f"### 部分 {i + 1}\n\n{s}"
-                for i, s in enumerate(partial_summaries)
-            )
-
-        logger.info("Merging %d partial summaries...", len(partial_summaries))
-
-        from pdf_summarizer.config import config
-        prompts = config.load_prompts()
-        system = prompts.get("system_prompt", "你是一位专业的教育内容分析师。")
-        merge_prompt = prompts.get(
-            "merge_prompt",
-            "以下是课件多个部分的总结笔记，请将它们合并整理成一份完整的结构化笔记：\n\n{content}"
-        )
-
-        combined = "\n\n---\n\n".join(
-            f"### 部分 {i + 1}\n\n{s}"
-            for i, s in enumerate(partial_summaries)
-        )
-
-        return ai_generate_fn(
-            system_prompt=system,
-            user_prompt=merge_prompt.replace("{content}", combined),
-        )
-
 
 class PageChunker(ChunkingStrategy):
     """Chunks document by pages (fallback when no chapter structure)."""
@@ -127,33 +128,3 @@ class PageChunker(ChunkingStrategy):
             chunks.append(current_chunk)
 
         return chunks
-
-    def merge(self, partial_summaries: list[str], ai_generate_fn=None) -> str:
-        if len(partial_summaries) == 1:
-            return partial_summaries[0]
-
-        if ai_generate_fn is None:
-            return "\n\n---\n\n".join(
-                f"### 部分 {i + 1}\n\n{s}"
-                for i, s in enumerate(partial_summaries)
-            )
-
-        logger.info("Merging %d partial summaries...", len(partial_summaries))
-
-        from pdf_summarizer.config import config
-        prompts = config.load_prompts()
-        system = prompts.get("system_prompt", "你是一位专业的教育内容分析师。")
-        merge_prompt = prompts.get(
-            "merge_prompt",
-            "以下是课件多个部分的总结笔记，请将它们合并整理成一份完整的结构化笔记：\n\n{content}"
-        )
-
-        combined = "\n\n---\n\n".join(
-            f"### 部分 {i + 1}\n\n{s}"
-            for i, s in enumerate(partial_summaries)
-        )
-
-        return ai_generate_fn(
-            system_prompt=system,
-            user_prompt=merge_prompt.replace("{content}", combined),
-        )

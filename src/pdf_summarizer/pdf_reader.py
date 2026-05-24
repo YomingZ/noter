@@ -1,5 +1,15 @@
-"""PDF text extraction module with advanced features."""
+"""PDF text extraction module with advanced features.
 
+Supports:
+- Searchable text extraction with layout preservation
+- OCR fallback for scanned/image-based PDFs
+- Table extraction and Markdown conversion
+- LaTeX formula enhancement (Unicode → LaTeX)
+- Page image extraction for multimodal AI
+"""
+
+import io
+import base64
 import logging
 import re
 from collections import defaultdict
@@ -19,6 +29,19 @@ from pdf_summarizer.models import (
 from pdf_summarizer.config import config
 
 logger = logging.getLogger(__name__)
+
+try:
+    from pdf2image import convert_from_path as _pdf2image_convert
+    from PIL import Image
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
+
+try:
+    import pytesseract
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    TESSERACT_AVAILABLE = False
 
 
 @dataclass
@@ -65,16 +88,30 @@ class PDFExtractor:
         detect_structure: bool = True,
         remove_headers_footers: bool = True,
         font_size_threshold: float = 1.2,
+        enable_ocr: bool = True,
+        extract_tables: bool = True,
+        enhance_formulas: bool = True,
+        extract_images: bool = False,
+        ocr_languages: str = 'chi_sim+eng',
+        min_text_threshold: int = 100,
     ):
         self.max_pages = max_pages or config.settings.max_pages
         self.min_page_text = min_page_text or config.settings.min_page_text
         self.detect_structure = detect_structure
         self.remove_headers_footers = remove_headers_footers
         self.font_size_threshold = font_size_threshold
+        self.enable_ocr = enable_ocr
+        self.extract_tables = extract_tables
+        self.enhance_formulas = enhance_formulas
+        self.extract_images = extract_images
+        self.ocr_languages = ocr_languages
+        self.min_text_threshold = min_text_threshold
 
         # Analyzed font statistics
         self._body_font_size: Optional[float] = None
         self._font_sizes: dict[float, int] = defaultdict(int)
+
+        self._ocr_warning_logged = False
 
     def extract(self, pdf_path: Path) -> list[Chapter]:
         """
@@ -90,7 +127,11 @@ class PDFExtractor:
         return document.chapters if document.chapters else self._create_default_chapter(document)
 
     def read(self, file_path: Path) -> PDFDocument:
-        """Read a PDF file and extract text with structure."""
+        """Read a PDF file and extract text with structure.
+
+        Automatically detects scanned PDFs and falls back to OCR.
+        Extracts tables, enhances formulas, and optionally extracts images.
+        """
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"PDF file not found: {file_path}")
@@ -103,6 +144,7 @@ class PDFExtractor:
         pages: list[PDFPage] = []
         all_blocks: list[ContentBlock] = []
         total_pages_in_file = 0
+        is_scanned = False
 
         with pdfplumber.open(file_path) as pdf:
             total_pages_in_file = len(pdf.pages)
@@ -112,11 +154,9 @@ class PDFExtractor:
                 else total_pages_in_file
             )
 
-            # First pass: analyze font sizes across all pages
             if self.detect_structure:
                 self._analyze_fonts(pdf.pages[:pages_to_process])
 
-            # Second pass: extract content with structure
             for i, page in enumerate(pdf.pages[:pages_to_process]):
                 page_number = i + 1
                 page_blocks = self._extract_page_blocks(page, page_number)
@@ -125,19 +165,45 @@ class PDFExtractor:
                     page_text = "\n\n".join(b.text for b in page_blocks if b.text.strip())
 
                     if len(page_text) >= self.min_page_text:
+                        if self.enhance_formulas:
+                            page_text = self._enhance_formulas(page_text)
+
                         pages.append(PDFPage(
                             page_number=page_number,
                             text=page_text,
                             content_blocks=page_blocks,
                         ))
                         all_blocks.extend(page_blocks)
-                        logger.debug(f"Page {page_number}: {len(page_text)} characters")
+                        logger.debug(f"Page {page_number}: {len(page_text)} chars")
                     else:
-                        logger.warning(
-                            f"Page {page_number} skipped (only {len(page_text)} chars)"
+                        logger.debug(
+                            f"Page {page_number} has only {len(page_text)} chars"
                         )
 
-        # Build chapters from content blocks
+        total_chars = sum(len(p.text) for p in pages)
+        if total_chars < self.min_text_threshold and self.enable_ocr:
+            logger.info(
+                f"Only {total_chars} chars extracted — PDF may be scanned. "
+                f"Trying OCR..."
+            )
+            ocr_pages = self._ocr_pages(file_path, total_pages_in_file)
+            if ocr_pages:
+                pages = ocr_pages
+                is_scanned = True
+                all_blocks = []
+                for p in pages:
+                    all_blocks.extend(p.content_blocks)
+                logger.info(f"OCR extracted {len(pages)} pages successfully")
+
+        if not is_scanned and self.extract_tables:
+            pages = self._extract_tables_from_pages(file_path, pages)
+            all_blocks = []
+            for p in pages:
+                all_blocks.extend(p.content_blocks)
+
+        if self.extract_images and PDF2IMAGE_AVAILABLE:
+            pages = self._extract_page_images(file_path, pages)
+
         chapters = self._build_chapters(all_blocks) if self.detect_structure else []
 
         document = PDFDocument(
@@ -146,11 +212,13 @@ class PDFExtractor:
             total_pages=total_pages_in_file,
             pages=pages,
             chapters=chapters,
+            is_scanned=is_scanned,
         )
 
         logger.info(
             f"Extracted {len(pages)} pages, {document.total_chars} chars, "
             f"{len(chapters)} chapters"
+            f"{', scanned PDF (OCR)' if is_scanned else ''}"
         )
 
         return document
@@ -433,6 +501,196 @@ class PDFExtractor:
             page_start=1,
             page_end=document.total_pages,
         )]
+
+    def _ocr_pages(self, pdf_path: Path, total_pages: int) -> list[PDFPage]:
+        """Fallback OCR extraction for scanned/image-based PDFs.
+
+        Converts PDF pages to images, then uses Tesseract OCR to extract text.
+        Falls back gracefully if OCR dependencies are unavailable.
+        """
+        if not TESSERACT_AVAILABLE or not PDF2IMAGE_AVAILABLE:
+            if not self._ocr_warning_logged:
+                logger.warning(
+                    "OCR not available. Install: pip install pytesseract pdf2image Pillow\n"
+                    "Also install Tesseract-OCR: https://github.com/UB-Mannheim/tesseract/wiki"
+                )
+                self._ocr_warning_logged = True
+            return []
+
+        try:
+            images = _pdf2image_convert(
+                pdf_path,
+                first_page=1,
+                last_page=total_pages,
+                dpi=300,
+            )
+        except Exception as e:
+            logger.error(f"Failed to convert PDF to images: {e}")
+            return []
+
+        ocr_pages: list[PDFPage] = []
+        for i, img in enumerate(images):
+            page_number = i + 1
+            try:
+                text = pytesseract.image_to_string(
+                    img,
+                    lang=self.ocr_languages,
+                    config='--psm 6'
+                )
+                if text.strip():
+                    if self.enhance_formulas:
+                        text = self._enhance_formulas(text)
+                    page = PDFPage(
+                        page_number=page_number,
+                        text=text,
+                        content_blocks=[ContentBlock(
+                            text=text,
+                            block_type="paragraph",
+                            page_number=page_number,
+                        )],
+                    )
+                    ocr_pages.append(page)
+                    logger.debug(f"OCR page {page_number}: {len(text)} chars")
+                else:
+                    logger.debug(f"OCR page {page_number}: no text found")
+            except Exception as e:
+                logger.error(f"OCR failed on page {page_number}: {e}")
+
+        return ocr_pages
+
+    def _table_to_markdown(self, table_data: list[list]) -> str:
+        """Convert pdfplumber table data to Markdown table format."""
+        if not table_data or len(table_data) < 1:
+            return ""
+
+        rows = []
+        for row in table_data:
+            clean_row = [
+                (cell or "").strip().replace("\n", " ")
+                for cell in row
+            ]
+            rows.append(clean_row)
+
+        col_count = max(len(r) for r in rows) if rows else 0
+        if col_count == 0:
+            return ""
+
+        for r in rows:
+            while len(r) < col_count:
+                r.append("")
+
+        md_lines = []
+        md_lines.append("| " + " | ".join(rows[0]) + " |")
+        md_lines.append("| " + " | ".join(["---"] * col_count) + " |")
+        for row in rows[1:]:
+            md_lines.append("| " + " | ".join(row) + " |")
+
+        return "\n".join(md_lines)
+
+    def _extract_tables_from_pages(
+        self, pdf_path: Path, pages: list[PDFPage]
+    ) -> list[PDFPage]:
+        """Extract tables from PDF pages and add as structured ContentBlocks."""
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                for page in pdf.pages:
+                    page_number = page.page_number
+                    page_index = page_number - 1
+
+                    if page_index >= len(pages):
+                        continue
+
+                    existing_page = pages[page_index]
+                    tables = page.extract_tables()
+
+                    for table_data in tables:
+                        if table_data and len(table_data) >= 2:
+                            md_table = self._table_to_markdown(table_data)
+                            if md_table:
+                                table_block = ContentBlock(
+                                    text=md_table,
+                                    block_type="table",
+                                    page_number=page_number,
+                                )
+                                existing_page.content_blocks.append(table_block)
+                                existing_page.has_table = True
+
+                                existing_page.text += f"\n\n[表格]\n{md_table}"
+        except Exception as e:
+            logger.warning(f"Table extraction failed for {pdf_path}: {e}")
+
+        return pages
+
+    def _enhance_formulas(self, text: str) -> str:
+        """Convert Unicode math symbols to LaTeX commands.
+
+        Improves AI understanding by normalizing mathematical notation.
+        """
+        replacements = [
+            ('α', '\\alpha'), ('β', '\\beta'), ('γ', '\\gamma'),
+            ('δ', '\\delta'), ('ε', '\\varepsilon'), ('θ', '\\theta'),
+            ('λ', '\\lambda'), ('μ', '\\mu'), ('π', '\\pi'),
+            ('σ', '\\sigma'), ('τ', '\\tau'), ('φ', '\\phi'),
+            ('ψ', '\\psi'), ('ω', '\\omega'), ('Γ', '\\Gamma'),
+            ('Δ', '\\Delta'), ('Θ', '\\Theta'), ('Λ', '\\Lambda'),
+            ('Π', '\\Pi'), ('Σ', '\\Sigma'), ('Φ', '\\Phi'),
+            ('Ψ', '\\Psi'), ('Ω', '\\Omega'),
+            ('∫', '\\int '), ('∬', '\\iint '), ('∭', '\\iiint '),
+            ('∑', '\\sum '), ('∏', '\\prod '), ('∂', '\\partial '),
+            ('∇', '\\nabla '), ('√', '\\sqrt '), ('∞', '\\infty '),
+            ('→', '\\to '), ('⇒', '\\Rightarrow '), ('⇔', '\\Leftrightarrow '),
+            ('≠', '\\neq '), ('≤', '\\leq '), ('≥', '\\geq '),
+            ('±', '\\pm '), ('∓', '\\mp '), ('×', '\\times '),
+            ('÷', '\\div '), ('≈', '\\approx '), ('≡', '\\equiv '),
+            ('∈', '\\in '), ('∉', '\\notin '), ('⊂', '\\subset '),
+            ('⊃', '\\supset '), ('∩', '\\cap '), ('∪', '\\cup '),
+            ('∅', '\\emptyset '), ('∀', '\\forall '), ('∃', '\\exists '),
+            ('ℏ', '\\hbar '), ('ħ', '\\hbar '),
+            ('⊗', '\\otimes '), ('⊕', '\\oplus '),
+            ('†', '\\dagger '), ('⟨', '\\langle '), ('⟩', '\\rangle '),
+        ]
+
+        for unicode_char, latex_cmd in replacements:
+            text = text.replace(unicode_char, latex_cmd)
+
+        text = re.sub(
+            r'(?<![\\$])\b([a-zA-Z])(?=_\{|\^\{)',
+            r'\\\1',
+            text
+        )
+
+        return text
+
+    def _extract_page_images(
+        self, pdf_path: Path, pages: list[PDFPage]
+    ) -> list[PDFPage]:
+        """Extract each page as a base64-encoded PNG image.
+
+        Images are stored in PDFPage.images_base64 for multimodal AI processing.
+        """
+        if not PDF2IMAGE_AVAILABLE:
+            return pages
+
+        try:
+            images = _pdf2image_convert(
+                pdf_path,
+                first_page=1,
+                last_page=len(pages),
+                dpi=150,
+            )
+            for i, img in enumerate(images):
+                if i < len(pages):
+                    buf = io.BytesIO()
+                    img.save(buf, format="PNG", optimize=True)
+                    b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+                    pages[i].images_base64.append(b64_str)
+                    logger.debug(
+                        f"Page {pages[i].page_number}: image {len(b64_str)} bytes"
+                    )
+        except Exception as e:
+            logger.warning(f"Image extraction failed for {pdf_path}: {e}")
+
+        return pages
 
     def read_directory(
         self,

@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from pdf_summarizer.summarizer import Summarizer
+from pdf_summarizer.summary_parser import SummaryParser
 from pdf_summarizer.models import AIProvider, ProcessResult, PDFDocument, PDFPage
 
 
@@ -18,9 +19,9 @@ class TestSummarizer:
 
     def test_extract_list_items_numbered(self):
         """Test extracting numbered list items."""
-        summarizer = Summarizer(provider=AIProvider.OPENAI)
+        parser = SummaryParser()
         text = "1. First item\n2. Second item\n3. Third item"
-        items = summarizer._extract_list_items(text)
+        items = parser._extract_list_items(text)
 
         assert len(items) == 3
         assert items[0] == "First item"
@@ -29,23 +30,23 @@ class TestSummarizer:
 
     def test_extract_list_items_bulleted(self):
         """Test extracting bulleted list items."""
-        summarizer = Summarizer(provider=AIProvider.OPENAI)
+        parser = SummaryParser()
         text = "- First item\n- Second item\n- Third item"
-        items = summarizer._extract_list_items(text)
+        items = parser._extract_list_items(text)
 
         assert len(items) == 3
         assert items[0] == "First item"
 
     def test_extract_sections(self):
         """Test extracting sections from markdown text."""
-        summarizer = Summarizer(provider=AIProvider.OPENAI)
+        parser = SummaryParser()
         text = """### Section 1
 Content for section 1.
 
 ### Section 2
 Content for section 2."""
 
-        sections = summarizer._extract_sections(text)
+        sections = parser._extract_sections(text)
 
         assert len(sections) == 2
         assert sections[0].title == "Section 1"
