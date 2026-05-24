@@ -599,13 +599,15 @@ class ObsidianNoteGenerator:
 
             if aggressive:
                 if stripped.startswith("#"):
-                    skeleton_lines.append(line)
+                    level = len(stripped.split()[0]) if stripped.split() else 1
+                    skeleton_lines.append("#" * level + " ")
                 elif stripped == "":
                     skeleton_lines.append("")
                 continue
 
             if stripped.startswith("#"):
-                skeleton_lines.append(line)
+                level = len(stripped.split()[0]) if stripped.split() else 1
+                skeleton_lines.append("#" * level + " ")
             elif stripped.startswith("---"):
                 skeleton_lines.append(line)
             elif stripped.startswith("```"):
