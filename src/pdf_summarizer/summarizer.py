@@ -57,7 +57,7 @@ class Summarizer:
     ):
         self.provider = provider
         self.output_dir = output_dir or config.ensure_output_dir()
-        self.pdf_reader = PDFExtractor()
+        self.pdf_reader = PDFExtractor(extract_images=True)
         self.docx_writer = DocxWriter(template_path=template_path)
         self.max_chunk_tokens = max_chunk_tokens
         self.template_path = template_path

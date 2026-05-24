@@ -6,13 +6,15 @@ from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
-from pdf_summarizer.models import PDFDocument, ProcessResult
+from pdf_summarizer.models import PDFDocument, ProcessResult, ContentPart
 from pdf_summarizer.vault_indexer import VaultIndexer, VaultNotFoundError
 
 logger = logging.getLogger(__name__)
 
 CHARS_PER_TOKEN = 1.5
 MAX_TEMPLATE_CACHE_SIZE = 10
+
+IMAGES_DIR_NAME = "_images"
 
 
 class ObsidianNoteGenerator:
@@ -58,9 +60,23 @@ class ObsidianNoteGenerator:
         placeholder = "{{content}}"
         has_placeholder = placeholder in template_content
 
-        user_prompt = self._build_prompt(template_content, document)
+        full_text = document.get_full_text()
+        estimated_tokens = len(full_text) / CHARS_PER_TOKEN
 
-        raw_response = self._call_ai_with_retry(user_prompt, use_cache)
+        raw_response: str
+        if estimated_tokens > self._max_tokens:
+            raw_response = self._generate_with_chunking(full_text, template_content, has_placeholder, use_cache)
+        else:
+            user_prompt = self._build_prompt(template_content, full_text, has_placeholder)
+            raw_response = self._call_ai_with_retry(user_prompt, use_cache)
+
+        images_dir: Optional[Path] = None
+        if document.has_images():
+            target_dir = self._resolve_target_dir(vault_root, course_name)
+            images_dir = self._save_vault_images(document, target_dir)
+            if images_dir:
+                rel_path = images_dir.relative_to(target_dir)
+                raw_response = self._inject_image_references(raw_response, rel_path)
 
         if has_placeholder:
             before, after = template_content.split(placeholder, 1)
@@ -80,6 +96,122 @@ class ObsidianNoteGenerator:
         result.success = True
         logger.info("Obsidian note saved to: %s", output_file)
         return result
+
+    def _resolve_target_dir(self, vault_root: Path, course_name: str) -> Path:
+        indexer = VaultIndexer(vault_root)
+        return indexer.resolve_course_path(course_name)
+
+    def _generate_with_chunking(
+        self, full_text: str, template_content: str, has_placeholder: bool, use_cache: bool
+    ) -> str:
+        logger.info(
+            "Content too large (%.0f tokens), chunking...",
+            len(full_text) / CHARS_PER_TOKEN,
+        )
+
+        chunks = self._split_text_into_chunks(full_text)
+
+        partial_summaries = []
+        for i, chunk in enumerate(chunks):
+            logger.info("Processing chunk %d/%d...", i + 1, len(chunks))
+            if i == 0:
+                chunk_prompt = self._build_prompt(template_content, chunk, has_placeholder)
+            else:
+                chunk_prompt = (
+                    "以下是课件内容的一部分（第{}部分/共{}部分），请继续生成对应的笔记内容：\n\n{}"
+                ).format(i + 1, len(chunks), chunk)
+
+            summary = self._call_ai_with_retry(chunk_prompt, use_cache)
+            partial_summaries.append(summary)
+
+        if len(partial_summaries) == 1:
+            return partial_summaries[0]
+
+        merge_prompt = (
+            "以下是一份长笔记被拆分为多个部分生成的结果。\n"
+            "请将它们合并成一份完整、连贯、结构清晰的学习笔记。\n"
+            "注意：删除重复的标题和过渡性文字，保证内容流畅。\n\n"
+        )
+        for i, s in enumerate(partial_summaries):
+            merge_prompt += f"--- 第{i + 1}部分 ---\n{s}\n\n"
+
+        return self._call_ai_with_retry(merge_prompt, use_cache)
+
+    @staticmethod
+    def _split_text_into_chunks(text: str, max_chars: Optional[int] = None) -> list[str]:
+        if max_chars is None:
+            max_chars = 8000
+
+        paragraphs = text.split("\n\n")
+        chunks = []
+        current_chunk = ""
+
+        for para in paragraphs:
+            if len(current_chunk) + len(para) > max_chars and current_chunk:
+                chunks.append(current_chunk.strip())
+                current_chunk = para
+            else:
+                if current_chunk:
+                    current_chunk += "\n\n" + para
+                else:
+                    current_chunk = para
+
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+
+        return chunks if chunks else [text]
+
+    def _save_vault_images(self, document: PDFDocument, target_dir: Path) -> Optional[Path]:
+        images_dir = target_dir / IMAGES_DIR_NAME
+        images_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_count = 0
+        for page in document.pages:
+            for idx, b64_img in enumerate(page.images_base64):
+                try:
+                    import base64
+                    img_data = base64.b64decode(b64_img)
+                    img_filename = f"page{page.page_number:03d}_{idx:02d}.png"
+                    img_path = images_dir / img_filename
+                    with open(img_path, "wb") as f:
+                        f.write(img_data)
+                    saved_count += 1
+                except Exception as e:
+                    logger.warning("Failed to save image from page %d: %s", page.page_number, e)
+
+        if saved_count > 0:
+            logger.info("Saved %d images to %s", saved_count, images_dir)
+            return images_dir
+        return None
+
+    @staticmethod
+    def _inject_image_references(text: str, rel_path: Path) -> str:
+        lines = text.split("\n")
+        result = []
+        image_inserted = False
+        image_count = 0
+
+        for line in lines:
+            stripped = line.strip()
+
+            if re.match(r'^!\[\[', stripped):
+                result.append(line)
+                image_inserted = True
+                continue
+
+            if re.match(r'^## ', stripped) and not image_inserted and image_count == 0:
+                result.append(line)
+                result.append("")
+                result.append(f"![[{rel_path}/page001_00.png]]")
+                image_inserted = True
+                continue
+
+            if re.match(r'^# ', stripped):
+                image_count += 1
+
+            result.append(line)
+
+        return "\n".join(result)
 
     def _validate_inputs(self, template_path: Path, vault_root: Path):
         if not template_path.exists():
@@ -108,26 +240,33 @@ class ObsidianNoteGenerator:
 
         return content
 
-    def _build_prompt(self, template_content: str, document: PDFDocument) -> str:
+    def _build_prompt(self, template_content: str, content_text: str, has_placeholder: bool) -> str:
         from pdf_summarizer.config import config
+        from pdf_summarizer.summarizer import Summarizer
 
         prompts = config.load_prompts()
         obsidian_cfg = prompts.get("obsidian_template", {})
-        system = obsidian_cfg.get(
-            "system_prompt",
-            "你是一位大学授课教授，正在制作课程讲稿笔记。"
-        )
+
+        if has_placeholder:
+            instruction_template = (
+                "{template_content}\n\n"
+                "请根据以下课件内容，为 {{content}} 占位符位置生成笔记正文。\n\n"
+                "课件内容：\n{content}"
+            )
+            structure_skeleton = self._extract_template_structure(template_content, aggressive=True)
+            return instruction_template.replace(
+                "{template_content}", structure_skeleton
+            ).replace("{content}", content_text)
+
         instruction_template = obsidian_cfg.get(
             "template_instruction",
             "请参考以下模板格式：\n{template_content}\n\n课件内容：\n{content}"
         )
 
-        full_text = document.get_full_text()
-
         structure_skeleton = self._extract_template_structure(template_content)
         user_prompt = instruction_template.replace(
             "{template_content}", structure_skeleton
-        ).replace("{content}", full_text)
+        ).replace("{content}", content_text)
 
         estimated_tokens = len(user_prompt) / CHARS_PER_TOKEN
         if estimated_tokens > self._max_tokens:
@@ -140,7 +279,7 @@ class ObsidianNoteGenerator:
             )
             user_prompt = instruction_template.replace(
                 "{template_content}", structure_skeleton
-            ).replace("{content}", full_text)
+            ).replace("{content}", content_text)
 
         return user_prompt
 
@@ -175,316 +314,135 @@ class ObsidianNoteGenerator:
 
     @staticmethod
     def _fix_latex_for_obsidian(text: str) -> str:
-        text = ObsidianNoteGenerator._remove_double_dollar_blocks(text)
-
         text = ObsidianNoteGenerator._fix_escaped_dollars(text)
-
         text = ObsidianNoteGenerator._convert_parenthesis_environments(text)
-
         text = ObsidianNoteGenerator._convert_begin_end_environments(text)
-
-        text = ObsidianNoteGenerator._clean_backtick_formulas(text)
-
-        lines = text.split('\n')
-        result = []
-        in_formula_block = False
-        formula_lines = []
-
-        for line in lines:
-            stripped = line.strip()
-
-            if stripped == '\\[':
-                in_formula_block = True
-                formula_lines = []
-                continue
-
-            if stripped == '\\]':
-                if in_formula_block and formula_lines:
-                    raw_content = '\n'.join(formula_lines)
-                    cleaned = ObsidianNoteGenerator._clean_latex_display(raw_content)
-                    if cleaned:
-                        result.append(f'$${cleaned}$$')
-                in_formula_block = False
-                formula_lines = []
-                continue
-
-            if in_formula_block:
-                formula_lines.append(stripped)
-                continue
-
-            if (stripped.startswith('$$') and stripped.endswith('$$')
-                    and len(stripped) > 4):
-                inner = stripped[2:-2].strip()
-                cleaned = ObsidianNoteGenerator._clean_latex_display(inner)
-                if cleaned:
-                    result.append(f'$${cleaned}$$')
-                continue
-
-            if (ObsidianNoteGenerator._looks_like_latex(stripped)
-                    and not stripped.startswith('$')
-                    and not stripped.startswith('`')
-                    and not stripped.startswith('|')
-                    and not stripped.startswith('>')
-                    and not stripped.startswith('-')
-                    and not stripped.startswith('*')
-                    and not stripped.startswith('\\')):
-                cleaned = ObsidianNoteGenerator._clean_latex_content(stripped)
-                if cleaned:
-                    result.append(f'$${cleaned}$$')
-                continue
-
-            result.append(line)
-
-        text = '\n'.join(result)
-        text = ObsidianNoteGenerator._clean_inline_formulas(text)
-        text = ObsidianNoteGenerator._cleanup_remaining_issues(text)
-
-        text = ObsidianNoteGenerator._fix_missing_braces(text)
-
-        text = ObsidianNoteGenerator._post_cleanup(text)
-
+        text = ObsidianNoteGenerator._normalize_dollar_blocks(text)
+        text = ObsidianNoteGenerator._fix_unbalanced_braces(text)
+        text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
     @staticmethod
-    def _clean_backtick_formulas(text: str) -> str:
-        pattern = re.compile(r'`([^`]*\$[^`]*)`')
+    def _normalize_dollar_blocks(text: str) -> str:
+        lines = text.split('\n')
+        result = []
+        in_block = False
+        pending_content = []
 
-        def clean_backtick_match(m):
-            content = m.group(1)
-            cleaned = ObsidianNoteGenerator._clean_latex_content(content)
-            if cleaned:
-                is_display = (
-                    '\\frac' in cleaned or
-                    '\\int' in cleaned or
-                    '\\sum' in cleaned or
-                    len(cleaned) > 30
-                )
-                if is_display:
-                    return f'$${cleaned}$$'
+        for line in lines:
+            parts = line.split('$$')
+
+            if len(parts) == 1:
+                if in_block:
+                    pending_content.append(line)
                 else:
-                    return f'${cleaned}$'
-            return m.group(0)
+                    result.append(line)
+                continue
 
-        text = pattern.sub(clean_backtick_match, text)
-        return text
+            nonempty_parts = [p for p in parts if p.strip()]
+            isolated_dd_count = len(parts) - 1
+
+            if not in_block:
+                before = parts[0]
+                if before.strip():
+                    result.append(before)
+
+                if isolated_dd_count >= 2:
+                    result.append('$$')
+                    inner = parts[1]
+                    if inner.strip():
+                        result.append(inner.strip())
+                    result.append('$$')
+                    after = ''.join(parts[2:])
+                    if after.strip():
+                        result.append(after)
+                elif isolated_dd_count == 1:
+                    after = parts[1]
+                    if after.strip():
+                        pending_content = [after.strip()]
+                    else:
+                        pending_content = []
+                    result.append('$$')
+                    in_block = True
+            else:
+                before = parts[0]
+                after = parts[-1] if len(parts) > 1 else ''
+
+                if before.strip():
+                    pending_content.append(before)
+
+                if isolated_dd_count == 1:
+                    result.extend(pending_content)
+                    result.append('$$')
+                    pending_content = []
+                    in_block = False
+                    if after.strip():
+                        result.append(after)
+                elif isolated_dd_count >= 2:
+                    result.extend(pending_content)
+                    result.append('$$')
+                    inner = parts[1]
+                    if inner.strip():
+                        result.append(inner.strip())
+                    if len(parts) > 2:
+                        result.append('$$')
+                        remaining = ''.join(parts[2:])
+                        if remaining.strip():
+                            result.append(remaining)
+                    pending_content = []
+                    in_block = False
+
+        if in_block and pending_content:
+            result.extend(pending_content)
+            result.append('$$')
+
+        return '\n'.join(result)
 
     @staticmethod
-    def _cleanup_remaining_issues(text: str) -> str:
-        text = re.sub(r'\\\\hat', r'\\hat', text)
-        text = re.sub(r'\\\\frac', r'\\frac', text)
-        text = re.sub(r'\\\\partial', r'\\partial', text)
-        text = re.sub(r'\\\\Psi', r'\\Psi', text)
-        text = re.sub(r'\\\\hbar', r'\\hbar', text)
-        text = re.sub(r'\\\\lambda', r'\\lambda', text)
-        text = re.sub(r'\\\\sigma', r'\\sigma', text)
-        text = re.sub(r'\\\\infty', r'\\infty', text)
-        return text
-
-    @staticmethod
-    def _fix_missing_braces(content: str) -> str:
-        open_n = content.count('{')
-        close_n = content.count('}')
-        if open_n <= close_n:
-            return content
-
-        fixed = re.sub(
-            r'(\^\{[^}]*\})(\s*\\[a-zA-Z]+)',
-            r'\1}\2',
-            content
-        )
-
-        if fixed.count('}') > fixed.count('{'):
-            return content
-
-        return fixed
-
-    @staticmethod
-    def _post_cleanup(text: str) -> str:
-        text = re.sub(r'\)+\s*(\$\$)', r')\1', text)
-        text = re.sub(r'\((\$\$)', r'\1', text)
-        text = re.sub(r'(\$\$)\)', r'\1)', text)
-        text = re.sub(r'([（(])\s*\$\$(.+?)\$\$\s*([）)])', r'\1$\2$\3', text)
-        text = re.sub(r'\n{3,}', '\n\n', text)
+    def _fix_escaped_dollars(text: str) -> str:
+        text = re.sub(r'\\\$', '\\\\', text)
         return text
 
     @staticmethod
     def _convert_parenthesis_environments(text: str) -> str:
-        pattern = re.compile(r'\\\((.*?)\\\)', re.DOTALL)
-
-        def convert_paren_match(m):
-            content = m.group(1).strip()
-            cleaned = ObsidianNoteGenerator._clean_latex_content(content)
-            if not cleaned:
-                return m.group(0)
-
-            needs_display = (
-                '\\int ' in cleaned or
-                '\\sum ' in cleaned or
-                '\\prod ' in cleaned or
-                '\\begin{' in cleaned or
-                cleaned.count('\\frac') >= 2 or
-                cleaned.count('\\') >= 4 or
-                len(cleaned) > 50
-            )
-
-            if needs_display:
-                return f'$${cleaned}$$'
-            else:
-                return f'${cleaned}$'
-
-        text = pattern.sub(convert_paren_match, text)
+        text = re.sub(
+            r'\\\((.*?)\\\)',
+            lambda m: '$' + m.group(1).strip() + '$',
+            text,
+            flags=re.DOTALL,
+        )
+        text = re.sub(
+            r'\\\[(.*?)\\\]',
+            lambda m: '$$\n' + m.group(1).strip() + '\n$$',
+            text,
+            flags=re.DOTALL,
+        )
         return text
 
     @staticmethod
-    def _fix_escaped_dollars(text: str) -> str:
-        text = re.sub(r'\\\$frac', r'\\frac', text)
-        text = re.sub(r'\\\$partial', r'\\partial', text)
-        text = re.sub(r'\\\$Psi', r'\\Psi', text)
-        text = re.sub(r'\\\$hat', r'\\hat', text)
-        text = re.sub(r'\\\$hbar', r'\\hbar', text)
-        text = re.sub(r'\\\$lambda', r'\\lambda', text)
-        text = re.sub(r'\\\$sigma', r'\\sigma', text)
-        text = re.sub(r'\\\$infty', r'\\infty', text)
-        text = re.sub(r'\\\$pi', r'\\pi', text)
-        text = re.sub(r'\\\$exp', r'\\exp', text)
-        text = re.sub(r'\\\$left', r'\\left', text)
-        text = re.sub(r'\\\$right', r'\\right', text)
-        text = re.sub(r'\\\$alpha', r'\\alpha', text)
-        text = re.sub(r'\\\$beta', r'\\beta', text)
-        text = re.sub(r'\\\$gamma', r'\\gamma', text)
-        text = re.sub(r'\\\$delta', r'\\delta', text)
-        text = re.sub(r'\\\$theta', r'\\theta', text)
-        text = re.sub(r'\\\$omega', r'\\omega', text)
-        text = re.sub(r'\\\$phi', r'\\phi', text)
-        text = re.sub(r'\)\\s*\\\$', ')', text)
-        text = re.sub(r'\\\$\\\)', r'\\)', text)
-        text = re.sub(r'\\\$\)\\\)', r'\\)', text)
-        text = re.sub(r'\\\$\)', r'\\)', text)
-        text = re.sub(r'\\\$\\', r'\\', text)
-        text = re.sub(r'\\\$', '', text)
-        return text
-
-    @staticmethod
-    def _clean_latex_display(content: str) -> str:
-        content = content.strip()
-
-        content = re.sub(r'\$\^(\*)', r'^\1', content)
-        content = re.sub(r'\$\{', '{', content)
-        content = re.sub(r'\}\$', '}', content)
-        content = re.sub(r'(?<=[a-zA-Z0-9})\]])\$(?=[a-zA-Z{(])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z0-9=])\$(?=[\(])', '', content)
-        content = re.sub(r'(?<=\^)\$(?=[a-zA-Z*])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z])\$\^', '^', content)
-        content = re.sub(r'\$\(', '(', content)
-        content = re.sub(r'(?<=\w)\$(?=\w)', '', content)
-
-        content = re.sub(r'\$\s*\$', '', content)
-        content = re.sub(r'(?<!\\)\$\\([a-zA-Z]+)', r'\\\1', content)
-
-        content = re.sub(r'\$\{', '{', content)
-        content = re.sub(r'\}\$', '}', content)
-        content = re.sub(r'\$_', '_', content)
-        content = re.sub(r'_\$', '_', content)
-        content = re.sub(r'\$\^', '^', content)
-        content = re.sub(r'^\$', '^', content)
-        content = re.sub(r'\^(\$\w)', lambda m: '^' + m.group(1).replace('$', ''), content)
-        content = re.sub(r'\^(\$\*)', r'^*', content)
-        content = re.sub(r'\{(\$\w)', lambda m: '{' + m.group(1).replace('$', ''), content)
-        content = re.sub(r'(\w)\$(\{)', r'\1\2', content)
-
-        content = re.sub(r'(?<=[a-zA-Z0-9})\]_])\$(?=[a-zA-Z{])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z0-9})\]])\$(?=\d)', '', content)
-        content = re.sub(r'(?<=\d)\$(?=[a-zA-Z{])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z])\$(?=[(\[])', '', content)
-        content = re.sub(r'(?<=[)\]])\$(?=[a-zA-Z\d])', '', content)
-        content = re.sub(r'(?<=\^)\$(?=[a-zA-Z*])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z])\$\^', '^', content)
-
-        content = re.sub(r'\$(?=[=\s,;:\]\)\}])', '', content)
-        content = re.sub(r'(?<=[=\s,;:\[\(])\$', '', content)
-
-        content = content.replace('$\\', '\\')
-        content = content.replace('\\$ ', ' ')
-        content = content.replace('\\$', '\\')
-
-        content = re.sub(r'(?<!\\)\$(?=[a-zA-Z])', '', content)
-
-        content = re.sub(r'^\$|\$$', '', content)
-
-        content = re.sub(r'\|\|', '|', content)
-        content = re.sub(r'\\\|', '|', content)
-
-        content = re.sub(r'\s+', ' ', content)
-
-        content = content.replace('$', '')
-
-        return content.strip()
-
-    @staticmethod
-    def _clean_inline_formulas(text: str) -> str:
+    def _fix_unbalanced_braces(text: str) -> str:
         lines = text.split('\n')
         result = []
         for line in lines:
-            if '$$' in line:
-                result.append(line)
-                continue
-
-            cleaned_line = ObsidianNoteGenerator._fix_inline_formula_dollars(line)
-            result.append(cleaned_line)
-
-        return '\n'.join(result)
-
-    @staticmethod
-    def _fix_inline_formula_dollars(line: str) -> str:
-        if '$' not in line:
-            return line
-
-        if '$$' in line:
-            return line
-
-        result = []
-        i = 0
-        while i < len(line):
-            if line[i] == '$':
-                end = line.find('$', i + 1)
-                if end == -1:
-                    result.append(line[i:])
-                    break
-                inner = line[i+1:end]
-                cleaned = ObsidianNoteGenerator._clean_latex_content(inner)
-                if cleaned:
-                    result.append(f'${cleaned}$')
-                else:
-                    result.append(line[i:end+1])
-                i = end + 1
+            stripped = line.strip()
+            if stripped.startswith('$$') and stripped.endswith('$$') and len(stripped) > 4:
+                inner = stripped[2:-2].strip()
+                open_n = inner.count('{')
+                close_n = inner.count('}')
+                if open_n > close_n:
+                    inner += '}' * (open_n - close_n)
+                elif close_n > open_n:
+                    inner = '{' * (close_n - open_n) + inner
+                result.append(f'$${inner}$$')
             else:
-                result.append(line[i])
-                i += 1
-
-        return ''.join(result)
-
-    @staticmethod
-    def _preprocess_inline_dollars(text: str) -> str:
-        lines = text.split('\n')
-        result = []
-        for line in lines:
-            if '$$' in line or line.strip().startswith('$$'):
+                open_n = line.count('{')
+                close_n = line.count('}')
+                if open_n > close_n:
+                    is_formula = '$' in line
+                    if is_formula:
+                        line += '}' * (open_n - close_n)
                 result.append(line)
-                continue
-
-            line = re.sub(r'(?<=[a-zA-Z0-9})\]])\s*\$(?=\s*[\\a-zA-Z{])', '', line)
-            line = re.sub(r'(?<=[a-zA-Z])\s*\$(?=\s*[(\[])', '', line)
-
-            result.append(line)
         return '\n'.join(result)
-
-    @staticmethod
-    def _remove_double_dollar_blocks(text: str) -> str:
-        pattern = r'\$\$\s*\n\s*\$\$(.+?)\$\$\s*\n\s*\$\$'
-        text = re.sub(pattern, lambda m: '$$' + m.group(1).strip() + '$$', text, flags=re.DOTALL)
-
-        text = re.sub(r'\$\$\s*\n\s*\$\$', '$$', text)
-        return text
 
     LATEX_ENVIRONMENTS_SIMPLE = {
         'equation', 'equation*', 'displaymath'
@@ -504,75 +462,19 @@ class ObsidianNoteGenerator:
                 r'\\begin\{' + re.escape(env) + r'\}(.*?)\\end\{' + re.escape(env) + r'\}',
                 re.DOTALL
             )
-            text = pattern.sub(lambda m: '$$' + m.group(1).strip() + '$$', text)
+            text = pattern.sub(lambda m: '$$\n' + m.group(1).strip() + '\n$$', text)
 
         for env in ObsidianNoteGenerator.LATEX_ENVIRONMENTS_COMPLEX:
             pattern = re.compile(
                 r'\\begin\{' + re.escape(env) + r'\}(.*?)\\end\{' + re.escape(env) + r'\}',
                 re.DOTALL
             )
-            text = pattern.sub(lambda m: '$$\n\\begin{' + env + '}\n' + m.group(1).strip() + '\n\\end{' + env + '\n$$', text)
+            text = pattern.sub(
+                lambda m: '$$\n\\begin{' + env + '}\n' + m.group(1).strip() + '\n\\end{' + env + '\n$$',
+                text,
+            )
 
         return text
-
-    @staticmethod
-    def _clean_latex_content(content: str) -> str:
-        content = content.strip()
-
-        content = re.sub(r'\$\s*\$', '', content)
-
-        content = re.sub(r'(?<!\\)\$\\([a-zA-Z]+)', r'\\\1', content)
-
-        content = re.sub(r'\$\{', '{', content)
-        content = re.sub(r'\}\$', '}', content)
-        content = re.sub(r'\$_', '_', content)
-        content = re.sub(r'_\$', '_', content)
-        content = re.sub(r'\$\^', '^', content)
-        content = re.sub(r'^\$', '^', content)
-        content = re.sub(r'\^(\$\w)', lambda m: '^' + m.group(1).replace('$', ''), content)
-        content = re.sub(r'\^(\$\*)', r'^*', content)
-        content = re.sub(r'\{(\$\w)', lambda m: '{' + m.group(1).replace('$', ''), content)
-        content = re.sub(r'(\w)\$(\{)', r'\1\2', content)
-
-        content = re.sub(r'(?<=[a-zA-Z0-9})\]_])\$(?=[a-zA-Z{])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z0-9})\]])\$(?=\d)', '', content)
-        content = re.sub(r'(?<=\d)\$(?=[a-zA-Z{])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z])\$(?=[(\[])', '', content)
-        content = re.sub(r'(?<=[)\]])\$(?=[a-zA-Z\d])', '', content)
-        content = re.sub(r'(?<=\^)\$(?=[a-zA-Z*])', '', content)
-        content = re.sub(r'(?<=[a-zA-Z])\$\^', '^', content)
-
-        content = re.sub(r'\$(?=[=\s,;:\]\)\}])', '', content)
-        content = re.sub(r'(?<=[=\s,;:\[\(])\$', '', content)
-
-        content = content.replace('$\\', '\\')
-        content = content.replace('\\$ ', ' ')
-        content = content.replace('\\$', '\\')
-
-        content = re.sub(r'(?<!\\)\$(?=[a-zA-Z])', '', content)
-
-        content = re.sub(r'^\$|\$$', '', content)
-
-        content = re.sub(r'\s+', ' ', content)
-
-        return content.strip()
-
-    @staticmethod
-    def _looks_like_latex(text: str) -> bool:
-        if len(text) < 5:
-            return False
-        latex_indicators = [
-            r'\\frac', r'\\sum', r'\\prod', r'\\int', r'\\sqrt',
-            r'\\lim', r'\\sin', r'\\cos', r'\\tan', r'\\log',
-            r'\\exp', r'\\ln', r'\\alpha', r'\\beta', r'\\gamma',
-            r'\\delta', r'\\theta', r'\\lambda', r'\\pi', r'\\sigma',
-            r'\\psi', r'\\phi', r'\\omega', r'\\partial', r'\\nabla',
-            r'\\infty', r'\\cdot', r'\\times', r'\\pm', r'\\leq',
-            r'\\geq', r'\\left', r'\\right', r'\\mathbf', r'\\mathrm',
-            r'\\begin\{', r'\\end\{', r'\\hbar', r'\\quad',
-        ]
-        count = sum(1 for pattern in latex_indicators if pattern in text)
-        return count >= 2 or (count >= 1 and '\\' in text and '{' in text)
 
     @staticmethod
     def _write_to_vault(
