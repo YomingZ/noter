@@ -76,7 +76,7 @@ class ObsidianNoteGenerator:
             images_dir = self._save_vault_images(document, target_dir)
             if images_dir:
                 rel_path = images_dir.relative_to(target_dir)
-                raw_response = self._inject_image_references(raw_response, rel_path)
+                raw_response = self._inject_image_references(raw_response, rel_path, pages_total=len(document.pages))
 
         if has_placeholder:
             before, after = template_content.split(placeholder, 1)
@@ -324,6 +324,7 @@ class ObsidianNoteGenerator:
         text = ObsidianNoteGenerator._convert_begin_end_environments(text)
         text = ObsidianNoteGenerator._normalize_dollar_blocks(text)
         text = ObsidianNoteGenerator._fix_unbalanced_braces(text)
+        text = re.sub(r'\\end\{cases(?!\})', r'\\end{cases}', text)
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
