@@ -28,6 +28,7 @@ class SummaryParser:
 
         for section in sections:
             content = section.content
+            title_lower = section.title.lower()
 
             if "【定义】" in content:
                 summary.core_concepts.extend(
@@ -42,7 +43,38 @@ class SummaryParser:
                     self._extract_marker_content(content, "【注意】")
                 )
 
+        if not summary.key_points:
+            summary.key_points = self._extract_key_points_fallback(sections)
+        if not summary.review_tips:
+            summary.review_tips = self._extract_review_tips_fallback(sections)
+
         return summary
+
+    def _extract_key_points_fallback(self, sections: list[SummarySection]) -> list[str]:
+        key_point_keywords = ["重点", "要点", "关键", "核心", "重要", "公式", "结论"]
+        items = []
+        for section in sections:
+            title_lower = section.title.lower()
+            if any(kw in title_lower or kw in section.title for kw in key_point_keywords):
+                list_items = self._extract_list_items(section.content)
+                if list_items:
+                    items.extend(list_items)
+                elif section.content.strip():
+                    items.append(section.content.strip())
+        return items[:10]
+
+    def _extract_review_tips_fallback(self, sections: list[SummarySection]) -> list[str]:
+        review_keywords = ["注意", "易错", "提示", "提醒", "常见错误", "陷阱"]
+        items = []
+        for section in sections:
+            title_lower = section.title.lower()
+            if any(kw in title_lower or kw in section.title for kw in review_keywords):
+                list_items = self._extract_list_items(section.content)
+                if list_items:
+                    items.extend(list_items)
+                elif section.content.strip():
+                    items.append(section.content.strip())
+        return items[:10]
 
     @staticmethod
     def _extract_marker_content(text: str, marker: str) -> list[str]:

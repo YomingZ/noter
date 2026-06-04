@@ -41,15 +41,13 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 # ============================================================================
 
 from gui_launcher.theme import Theme
-from gui_launcher.settings_manager import SettingsManager, CONFIG_DIR, SETTINGS_FILE
+from gui_launcher.settings_manager import SettingsManager, settings_manager, CONFIG_DIR, SETTINGS_FILE
 from gui_launcher.widget_factory import WidgetFactory
 from gui_launcher.log_panel import LogPanel
 from gui_launcher.drop_area import DropArea
 from gui_launcher.file_card import FileCard
 from gui_launcher.file_list_area import FileListArea
 from gui_launcher.settings_page import SettingsPage
-
-settings_manager = SettingsManager()
 
 
 # ============================================================================
@@ -63,7 +61,8 @@ class WorkerThread(QThread):
     finished_all = pyqtSignal(bool, str)
 
     def __init__(self, files, provider, output_format, output_dir,
-                 obsidian_template=None, obsidian_course=None, obsidian_vault=None):
+                 obsidian_template=None, obsidian_course=None, obsidian_vault=None,
+                 obsidian_note_name=None, obsidian_analysis=None):
         super().__init__()
         self.files = files
         self.provider = provider
@@ -72,6 +71,8 @@ class WorkerThread(QThread):
         self.obsidian_template = obsidian_template
         self.obsidian_course = obsidian_course
         self.obsidian_vault = obsidian_vault
+        self.obsidian_note_name = obsidian_note_name
+        self.obsidian_analysis = obsidian_analysis
         self._svc = None
 
     def cancel(self):
@@ -111,6 +112,8 @@ class WorkerThread(QThread):
                 obsidian_template=Path(self.obsidian_template) if self.obsidian_template else None,
                 obsidian_course=self.obsidian_course,
                 obsidian_vault=Path(self.obsidian_vault) if self.obsidian_vault else None,
+                obsidian_note_name=self.obsidian_note_name,
+                obsidian_analysis=self.obsidian_analysis,
             )
             self.log.emit(f"✅ ProcessingService 创建成功 (格式: {self.output_format})", "info")
 
@@ -168,11 +171,14 @@ class ModernMainWindow(QMainWindow):
         self.setup_ui()
         self.apply_theme()
 
+        # 初始化模板分析集成系统
+        self._setup_template_analysis_system()
+
     def setup_window(self):
         from PyQt6.QtGui import QIcon
         self.setWindowTitle("PDF 备考笔记生成器")
-        self.setMinimumSize(680, 680)
-        self.resize(720, 760)
+        self.setMinimumSize(680, 750)
+        self.resize(720, 800)
 
         # 设置自定义图标（任务栏和Alt+Tab显示）
         icon_path = "assets/noter_icon_v3.ico"
@@ -213,6 +219,9 @@ class ModernMainWindow(QMainWindow):
         default_vault = settings_manager.get("storage", "obsidian_vault_default", default="")
         if default_vault:
             self.obsidian_panel.vault_edit.setText(default_vault)
+        
+        # 同步所有设置到主界面
+        self._sync_settings_to_main()
 
         # 默认显示主页面
         self.pages.setCurrentIndex(0)
@@ -309,6 +318,8 @@ class ModernMainWindow(QMainWindow):
         self.obsidian_panel.browse_template_requested.connect(self._browse_obsidian_template)
         self.obsidian_panel.browse_vault_requested.connect(self._browse_obsidian_vault)
         self.obsidian_panel.courses_reload_requested.connect(self._reload_obsidian_courses)
+        # 连接模板分析信号
+        self.obsidian_panel.template_analysis_requested.connect(self._on_template_analysis_requested)
         layout.addWidget(self.obsidian_panel)
 
         # 连接格式切换事件
@@ -318,11 +329,33 @@ class ModernMainWindow(QMainWindow):
         self.log_panel = LogPanel()
         layout.addWidget(self.log_panel, 1)
 
-        # 底部操作栏
+        scroll.setWidget(scroll_content)
+        outer_layout.addWidget(scroll, 1)
+
+        # 底部操作栏 - 固定在窗口底部，不随滚动
         action_bar = QFrame()
-        action_bar.setStyleSheet("background: transparent;")
+        action_bar.setObjectName("fixedActionBar")
+        action_bar.setStyleSheet(f"""
+            QFrame#fixedActionBar {{
+                background-color: {Theme.get('bg_primary')};
+                border-top: 1px solid {Theme.get('border_light')};
+                padding: 0;
+            }}
+            QFrame#fixedActionBar:hover {{
+                background-color: {Theme.get('bg_elevated')};
+            }}
+        """)
+        action_bar.setFixedHeight(60)
+
+        from PyQt6.QtWidgets import QGraphicsDropShadowEffect
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(10)
+        shadow.setColor(QColor(0, 0, 0, 30))
+        shadow.setOffset(0, -2)
+        action_bar.setGraphicsEffect(shadow)
+
         action_layout = QHBoxLayout(action_bar)
-        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setContentsMargins(24, 12, 24, 12)
         action_layout.setSpacing(12)
 
         action_layout.addStretch()
@@ -348,10 +381,8 @@ class ModernMainWindow(QMainWindow):
         self.start_btn.clicked.connect(self.start_processing)
         action_layout.addWidget(self.start_btn)
 
-        layout.addWidget(action_bar)
+        outer_layout.addWidget(action_bar)
 
-        scroll.setWidget(scroll_content)
-        outer_layout.addWidget(scroll)
         return page
 
     def _combo_style(self) -> str:
@@ -448,6 +479,127 @@ class ModernMainWindow(QMainWindow):
         if courses:
             self.on_log(f"已加载 {len(courses)} 个课程: {', '.join(courses[:5])}{'...' if len(courses) > 5 else ''}", "info")
 
+    def _setup_template_analysis_system(self):
+        """初始化模板分析集成系统"""
+        import logging
+        from gui_launcher.template_analysis_integration import TemplateAnalysisIntegration
+
+        self.logger = logging.getLogger(__name__)
+        self.on_log("🔧 正在初始化模板分析系统...", "info")
+
+        # 创建集成实例
+        self.template_integration = TemplateAnalysisIntegration(self)
+
+        # 尝试初始化 AI 函数（延迟到首次使用时再检查）
+        try:
+            self._initialize_ai_for_analysis()
+            self.on_log("✅ 模板分析系统就绪", "success")
+        except Exception as e:
+            self.on_log(f"⚠️ 模板分析系统部分功能受限: {e}", "warning")
+            self.logger.warning(f"Template analysis system limited: {e}")
+
+    def _initialize_ai_for_analysis(self):
+        """为模板分析器初始化 AI 生成函数"""
+        import asyncio
+        import logging
+
+        self.logger = logging.getLogger(__name__)
+
+        async def ai_generate_fn(system_prompt: str, user_prompt: str, **kwargs) -> str:
+            """AI 生成函数包装器"""
+            self.logger.info(f"[TemplateAnalysis] AI 调用开始 - max_tokens={kwargs.get('max_tokens', 'default')}")
+
+            try:
+                from src.pdf_summarizer.ai_client import AIClient
+
+                # 获取当前配置的 AI 客户端
+                client = AIClient()
+
+                self.logger.info("[TemplateAnalysis] AI 客户端已创建")
+
+                # 调用生成接口
+                response = await client.generate(
+                    system_prompt=system_prompt,
+                    prompt=user_prompt,
+                    **kwargs
+                )
+
+                result_text = response.content if hasattr(response, 'content') else str(response)
+                self.logger.info(f"[TemplateAnalysis] AI 响应成功 - 长度: {len(result_text)} 字符")
+                return result_text
+
+            except Exception as e:
+                self.logger.error(f"[TemplateAnalysis] AI 调用失败: {e}", exc_info=True)
+                raise
+
+        # 初始化分析器的 AI 函数
+        self.template_integration.initialize_analyzer(ai_generate_fn)
+        self.logger.info("✅ [TemplateAnalysis] AI 函数已绑定到分析器")
+
+    def _on_template_analysis_requested(self, template_path: str):
+        """处理模板分析请求 - 带详细日志"""
+        import asyncio
+        from pathlib import Path
+        import time
+
+        start_time = time.time()
+        self.on_log(f"\n{'='*60}", "info")
+        self.on_log(f"🔍 [模板分析] 收到分析请求", "info")
+        self.on_log(f"   📄 模板路径: {template_path}", "info")
+        self.on_log(f"   ⏱️ 开始时间: {time.strftime('%H:%M:%S')}", "info")
+        self.on_log(f"{'='*60}\n", "info")
+
+        # 验证文件存在
+        template_file = Path(template_path)
+        if not template_file.exists():
+            self.on_log(f"❌ [模板分析] 错误：文件不存在", "error")
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "文件未找到", f"无法找到模板文件:\n{template_path}")
+            return
+
+        file_size = template_file.stat().st_size
+        self.on_log(f"✅ [模板分析] 文件验证通过", "success")
+        self.on_log(f"   📊 文件大小: {file_size / 1024:.1f} KB", "info")
+
+        # 禁用按钮防止重复点击
+        if hasattr(self.obsidian_panel, 'analyze_btn'):
+            self.obsidian_panel.analyze_btn.setEnabled(False)
+            self.obsidian_panel.analyze_btn.setText("⏳ 分析中...")
+
+        self.on_log(f"⏳ [模板分析] 正在启动异步分析任务...", "info")
+
+        # 创建并启动异步任务
+        async def run_analysis():
+            try:
+                await self.template_integration.on_analysis_requested(template_path)
+            except Exception as e:
+                self.on_log(f"❌ [模板分析] 异步任务异常: {e}", "error")
+                import traceback
+                self.on_log(traceback.format_exc(), "error")
+            finally:
+                # 恢复按钮状态
+                if hasattr(self.obsidian_panel, 'analyze_btn'):
+                    self.obsidian_panel.analyze_btn.setEnabled(True)
+                    self.obsidian_panel.analyze_btn.setText("🔍 分析")
+
+                elapsed = time.time() - start_time
+                self.on_log(f"\n{'='*60}", "info")
+                self.on_log(f"✅ [模板分析] 流程完成 | 总耗时: {elapsed:.2f}s", "success")
+                self.on_log(f"{'='*60}\n", "info")
+
+        # 在事件循环中运行异步任务
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 如果已经在运行的事件循环中，使用 create_task
+                asyncio.create_task(run_analysis())
+            else:
+                # 否则直接运行
+                loop.run_until_complete(run_analysis())
+        except RuntimeError:
+            # 如果没有事件循环，创建新的
+            asyncio.run(run_analysis())
+
     def show_main_page(self):
         self.setWindowTitle("PDF 备考笔记生成器")
         self._animate_page_switch(0)
@@ -466,7 +618,7 @@ class ModernMainWindow(QMainWindow):
         self.format_combo.setCurrentText(fmt)
 
         provider = settings_manager.get("ai", "provider", default="kimi")
-        provider_map = {"kimi": "kimi", "openai": "openai", "anthropic": "claude"}
+        provider_map = {"kimi": "kimi", "openai": "openai", "anthropic": "claude", "deepseek": "deepseek"}
         mapped = provider_map.get(provider, "kimi")
         self.provider_combo.setCurrentText(mapped)
 
@@ -507,9 +659,9 @@ class ModernMainWindow(QMainWindow):
         # Obsidian 模式参数
         fmt = self.format_combo.currentText()
         if fmt == "obsidian":
-            obsidian_template, obsidian_course, obsidian_vault = self.obsidian_panel.get_values()
+            obsidian_template, obsidian_course, obsidian_vault, obsidian_note_name, obsidian_analysis = self.obsidian_panel.get_values()
         else:
-            obsidian_template, obsidian_course, obsidian_vault = None, None, None
+            obsidian_template, obsidian_course, obsidian_vault, obsidian_note_name, obsidian_analysis = None, None, None, None, None
 
         # 显示调试信息
         self.log_panel.append_log("🚀 开始处理...", "info")
@@ -525,6 +677,8 @@ class ModernMainWindow(QMainWindow):
             obsidian_template=obsidian_template,
             obsidian_course=obsidian_course,
             obsidian_vault=obsidian_vault,
+            obsidian_note_name=obsidian_note_name,
+            obsidian_analysis=obsidian_analysis,
         )
         self.worker.progress.connect(self.on_progress)
         self.worker.log.connect(self.on_log)
@@ -576,6 +730,35 @@ class ModernMainWindow(QMainWindow):
 # ============================================================================
 
 def main():
+    import traceback
+
+    def exception_hook(exc_type, exc_value, exc_tb):
+        """全局异常处理钩子"""
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_tb)
+            return
+
+        error_msg = f"💥 程序发生未处理的异常:\n\n"
+        error_msg += f"类型: {exc_type.__name__}\n"
+        error_msg += f"信息: {exc_value}\n\n"
+        error_msg += "详细堆栈:\n"
+        error_msg += "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+
+        print(error_msg)
+
+        try:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                None,
+                "程序错误",
+                f"程序遇到错误需要关闭：\n\n{exc_type.__name__}: {exc_value}\n\n请查看日志获取详细信息。",
+                QMessageBox.StandardButton.Ok,
+            )
+        except Exception:
+            pass
+
+    sys.excepthook = exception_hook
+
     from PyQt6.QtGui import QIcon
     Theme.init_from_system()
 

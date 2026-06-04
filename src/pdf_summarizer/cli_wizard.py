@@ -172,6 +172,10 @@ CACHE_MAX_AGE_HOURS=24
         f.write(env_content)
 
     console.print(f"\n[green]✓ 配置已保存到 {env_path}[/]")
+    console.print(
+        "\n[yellow]⚠️  安全提醒: .env 文件包含明文 API Key，请勿分享或提交到版本控制。[/]"
+        "\n[yellow]   为安全考虑，建议后续在 GUI 的 设置 → API 配置 中通过加密存储管理密钥。[/]"
+    )
     console.print(f"\n[bold]配置摘要：[/]")
     console.print(f"  提供商: [cyan]{provider}[/]")
     console.print(f"  模型: [cyan]{model}[/]")

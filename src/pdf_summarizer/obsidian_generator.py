@@ -25,6 +25,51 @@ class ObsidianNoteGenerator:
         self._max_tokens = max_content_tokens
         self._template_cache: OrderedDict[str, str] = OrderedDict()
 
+    def _review_and_fix_note(self, note_content: str, use_cache: bool = True) -> str:
+        """对生成的笔记进行二次检查，修复 LaTeX 和格式问题
+        
+        Args:
+            note_content: 初始生成的笔记内容
+            use_cache: 是否使用缓存
+            
+        Returns:
+            修复后的笔记内容
+        """
+        from pdf_summarizer.config import config
+        
+        prompts = config.load_prompts()
+        review_config = prompts.get('obsidian_review', {})
+        
+        if not review_config:
+            logger.warning("二次检查配置未找到，跳过二次检查")
+            return note_content
+        
+        system_prompt = review_config.get('system_prompt', '')
+        review_prompt = review_config.get('review_prompt', '')
+        
+        if not system_prompt or not review_prompt:
+            logger.warning("二次检查提示词不完整，跳过二次检查")
+            return note_content
+        
+        logger.info("开始对笔记进行二次检查与修复...")
+        
+        # 构建检查提示词
+        user_prompt = review_prompt.replace('{content}', note_content)
+        
+        # 调用 AI 进行检查与修复
+        reviewed_content = self._ai_generate(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            use_cache=use_cache,
+            max_tokens=32768,
+        )
+        
+        # 应用我们的 LaTeX 修复函数作为最后的保障
+        reviewed_content = ObsidianNoteGenerator._fix_latex_for_obsidian(reviewed_content)
+        
+        logger.info("二次检查与修复完成")
+        return reviewed_content
+    
     def generate(
         self,
         document: PDFDocument,
@@ -90,20 +135,23 @@ class ObsidianNoteGenerator:
             user_prompt = self._build_prompt(template_content, full_text, has_placeholder, image_info)
             raw_response = self._call_ai_with_retry(user_prompt, use_cache)
 
+        # 构建初始内容
         if has_placeholder:
             before, after = template_content.split(placeholder, 1)
             cleaned = ObsidianNoteGenerator._clean_ai_output(raw_response)
-            final_content = before + "\n" + cleaned + "\n" + after
-            output_file = self._write_to_vault(
-                final_content, vault_root, course_name,
-                output_name or document.file_path.stem,
-            )
+            initial_content = before + "\n" + cleaned + "\n" + after
         else:
             cleaned = ObsidianNoteGenerator._clean_ai_output(raw_response)
-            output_file = self._write_to_vault(
-                cleaned, vault_root, course_name,
-                output_name or document.file_path.stem,
-            )
+            initial_content = cleaned
+        
+        # 二次检查与修复
+        final_content = self._review_and_fix_note(initial_content, use_cache)
+        
+        # 写入文件
+        output_file = self._write_to_vault(
+            final_content, vault_root, course_name,
+            output_name or document.file_path.stem,
+        )
 
         result.output_file = output_file
         result.success = True
@@ -302,12 +350,40 @@ class ObsidianNoteGenerator:
 
     @staticmethod
     def _fix_latex_for_obsidian(text: str) -> str:
+        # Step 1: Fix basic escape issues
         text = ObsidianNoteGenerator._fix_escaped_dollars(text)
-        text = ObsidianNoteGenerator._convert_parenthesis_environments(text)
+        
+        # Step 2: Fix backtick-wrapped formulas
+        text = ObsidianNoteGenerator._fix_backtick_wrapped_formulas(text)
+        
+        # Step 3: Fix parenthesis-style environments
+        text = ObsidianNoteGenerator._fix_parenthesis_environments(text)
+        
+        # Step 4: Fix begin-end environments
         text = ObsidianNoteGenerator._convert_begin_end_environments(text)
+        
+        # Step 5: Fix double vertical bars
+        text = ObsidianNoteGenerator._fix_double_vertical_bars(text)
+        
+        # Step 6: Fix nested dollar signs inside formulas
+        text = ObsidianNoteGenerator._remove_nested_dollar_signs(text)
+        
+        # Step 7: Fix command prefix dollars ($\frac → \frac)
+        text = ObsidianNoteGenerator._fix_command_prefix_dollars(text)
+        
+        # Step 8: Fix unclosed environments (new!)
+        text = ObsidianNoteGenerator._fix_unclosed_environments(text)
+        
+        # Step 9: Normalize dollar block positions
         text = ObsidianNoteGenerator._normalize_dollar_blocks(text)
+        
+        # Step 10: Fix unbalanced braces
         text = ObsidianNoteGenerator._fix_unbalanced_braces(text)
+        
+        # Step 11: Fix cases environment issues
         text = ObsidianNoteGenerator._fix_cases_environment(text)
+        
+        # Step 12: Clean up extra newlines
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()
 
@@ -316,6 +392,26 @@ class ObsidianNoteGenerator:
         text = re.sub(r'\\end\{cases(?!\})', r'\\end{cases}', text)
         text = re.sub(r'(\$\$[^$]*?)\n\$\$\n(\\begin\{)', r'\1\n\2', text, flags=re.DOTALL)
         text = re.sub(r'(\\end\{[^}]*\})\n\$\$\n\$\$', r'\1\n$$', text)
+        return text
+    
+    @staticmethod
+    def _fix_unclosed_environments(text: str) -> str:
+        """修复未闭合的 LaTeX 环境标签（如 \end{aligned -> \end{aligned}）"""
+        # 修复常见的未闭合环境标签
+        common_envs = [
+            'aligned', 'gathered', 'split', 
+            'cases', 'matrix', 'pmatrix', 'bmatrix', 'vmatrix', 
+            'equation', 'align', 'gather', 'array'
+        ]
+        
+        for env in common_envs:
+            # 修复 \end{env} 缺少闭合大括号的情况
+            pattern = re.compile(r'\\end\{' + re.escape(env) + r'(?=\s|$|\\|})', re.IGNORECASE)
+            text = pattern.sub(r'\\end{' + env + '}', text)
+        
+        # 修复多余的空 $$ 标签（\end{xxx} 后跟着两个 $$）
+        text = re.sub(r'(\\end\{[a-zA-Z*]+\})\s*\$\$\s*\$\$', r'\1\n$$', text)
+        
         return text
 
     @staticmethod
@@ -420,11 +516,42 @@ class ObsidianNoteGenerator:
 
     @staticmethod
     def _fix_escaped_dollars(text: str) -> str:
-        text = re.sub(r'\\\$', '\\\\', text)
+        # Remove unnecessary escape of $
+        text = re.sub(r'\\\$', '$', text)
+        # Also remove escaped backslashes that shouldn't be there
+        text = re.sub(r'\\\\', r'\\', text)
         return text
 
     @staticmethod
-    def _convert_parenthesis_environments(text: str) -> str:
+    def _remove_nested_dollar_signs(text: str) -> str:
+        # Fix patterns like $\hat{$O}$ → $\hat{O}$
+        # Find all inline formulas and fix their internal content
+        def fix_inline(match):
+            content = match.group(1)
+            # Remove any extra $ inside the formula
+            fixed = content.replace('$', '')
+            return f'${fixed}$'
+        
+        def fix_display(match):
+            content = match.group(1)
+            # Remove any extra $ inside the formula
+            fixed = content.replace('$', '')
+            return f'$${fixed}$$'
+        
+        # First fix display formulas (longest first)
+        text = re.sub(r'\$\$(.*?)\$\$', fix_display, text, flags=re.DOTALL)
+        # Then fix inline formulas
+        text = re.sub(r'\$([^\$]+)\$', fix_inline, text)
+        return text
+
+    @staticmethod
+    def _fix_double_vertical_bars(text: str) -> str:
+        # Replace \| with | in formulas
+        text = re.sub(r'\\\|', r'|', text)
+        return text
+
+    @staticmethod
+    def _fix_parenthesis_environments(text: str) -> str:
         text = re.sub(
             r'\\\((.*?)\\\)',
             lambda m: '$' + m.group(1).strip() + '$',
@@ -461,8 +588,37 @@ class ObsidianNoteGenerator:
                     is_formula = '$' in line
                     if is_formula:
                         line += '}' * (open_n - close_n)
+                elif close_n > open_n:
+                    is_formula = '$' in line
+                    if is_formula:
+                        line = '{' * (close_n - open_n) + line
                 result.append(line)
         return '\n'.join(result)
+
+    @staticmethod
+    def _fix_backtick_wrapped_formulas(text: str) -> str:
+        # Remove backticks around formulas
+        text = re.sub(r'`\$([^\$]+)\$`', r'$\1$', text)
+        text = re.sub(r'`\$\$(.*?)\$\$`', r'$$\1$$', text, flags=re.DOTALL)
+        return text
+
+    @staticmethod
+    def _fix_command_prefix_dollars(text: str) -> str:
+        # Fix patterns like $\frac → \frac inside formulas
+        def fix_commands(match):
+            content = match.group(1)
+            # Remove $ before LaTeX commands
+            fixed = re.sub(r'\$\\', r'\\', content)
+            return f'${fixed}$'
+        
+        def fix_display_commands(match):
+            content = match.group(1)
+            fixed = re.sub(r'\$\\', r'\\', content)
+            return f'$${fixed}$$'
+        
+        text = re.sub(r'\$([^\$]+)\$', fix_commands, text)
+        text = re.sub(r'\$\$(.*?)\$\$', fix_display_commands, text, flags=re.DOTALL)
+        return text
 
     LATEX_ENVIRONMENTS_SIMPLE = {
         'equation', 'equation*', 'displaymath'

@@ -15,12 +15,7 @@ from pdf_summarizer.models import (
     ContentPart,
 )
 from pdf_summarizer.pdf_reader import PDFExtractor
-from pdf_summarizer.ai_client import (
-    generate_summary,
-    generate_multimodal_summary,
-    create_client,
-    BaseAIClient,
-)
+from pdf_summarizer.ai_client import create_client, BaseAIClient
 from pdf_summarizer.docx_writer import DocxWriter
 from pdf_summarizer.output_formats import write_summary
 from pdf_summarizer.config import config
@@ -54,10 +49,14 @@ class Summarizer:
         template_path: Optional[Path] = None,
         subject: Optional[str] = None,
         ai_client: Optional[BaseAIClient] = None,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        base_url: Optional[str] = None,
+        temperature: Optional[float] = None,
     ):
         self.provider = provider
         self.output_dir = output_dir or config.ensure_output_dir()
-        self.pdf_reader = PDFExtractor(extract_images=True)
+        self.pdf_reader = PDFExtractor(extract_images=False)
         self.docx_writer = DocxWriter(template_path=template_path)
         self.max_chunk_tokens = max_chunk_tokens
         self.template_path = template_path
@@ -72,7 +71,17 @@ class Summarizer:
         if ai_client is not None:
             self._ai_client = ai_client
         else:
-            self._ai_client = create_client(provider)
+            # Build kwargs for create_client
+            client_kwargs = {}
+            if api_key:
+                client_kwargs['api_key'] = api_key
+            if model:
+                client_kwargs['model'] = model
+            if base_url:
+                client_kwargs['base_url'] = base_url
+            if temperature is not None:
+                client_kwargs['temperature'] = temperature
+            self._ai_client = create_client(provider, **client_kwargs)
 
         self.obsidian_generator = ObsidianNoteGenerator(
             ai_generate_fn=self._ai_generate,
@@ -144,6 +153,11 @@ class Summarizer:
         try:
             logger.info("Processing: %s", pdf_path)
             document = self.pdf_reader.read(pdf_path)
+
+            if self._ai_client.supports_vision() and not document.has_images():
+                vision_reader = PDFExtractor(extract_images=True)
+                document = vision_reader.read(pdf_path)
+
             result.pages_processed = len(document.pages)
 
             if not document.pages:

@@ -34,18 +34,16 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 # ============================================================================
 
 from gui_launcher.theme import Theme
-from gui_launcher.settings_manager import SettingsManager, CONFIG_DIR, SETTINGS_FILE
+from gui_launcher.settings_manager import SettingsManager, settings_manager, CONFIG_DIR, SETTINGS_FILE
 from gui_launcher.widget_factory import WidgetFactory
-
-settings_manager = SettingsManager()
 
 
 # ============================================================================
 # 设置页面基类
 # ============================================================================
 
-class SettingsPage(QWidget):
-    """设置页面基类"""
+class DialogSettingsPageBase(QWidget):
+    """对话框设置页面基类 — 注意与 gui_launcher.settings_page.SettingsPage 名称不同以避免冲突。"""
 
     settingsChanged = pyqtSignal()
 
@@ -98,7 +96,7 @@ class SettingsPage(QWidget):
 # AI 配置页面
 # ============================================================================
 
-class AIConfigPage(SettingsPage):
+class AIConfigPage(DialogSettingsPageBase):
     """AI 配置页面"""
 
     def __init__(self, parent=None):
@@ -295,7 +293,7 @@ class AIConfigPage(SettingsPage):
 # 输出偏好页面
 # ============================================================================
 
-class OutputPage(SettingsPage):
+class OutputPage(DialogSettingsPageBase):
     """输出偏好页面"""
 
     def __init__(self, parent=None):
@@ -513,7 +511,7 @@ class OutputPage(SettingsPage):
 # 存储设置页面
 # ============================================================================
 
-class StoragePage(SettingsPage):
+class StoragePage(DialogSettingsPageBase):
     """存储设置页面"""
 
     def __init__(self, parent=None):
@@ -614,7 +612,7 @@ class StoragePage(SettingsPage):
 # 界面设置页面
 # ============================================================================
 
-class InterfacePage(SettingsPage):
+class InterfacePage(DialogSettingsPageBase):
     """界面设置页面"""
 
     themeChanged = pyqtSignal(str)

@@ -1,5 +1,6 @@
 """ObsidianPanel — step-by-step vault configuration with wizard-style cards."""
 
+from pathlib import Path
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel,
@@ -7,6 +8,7 @@ from PyQt6.QtWidgets import (
 )
 
 from gui_launcher.theme import Theme
+from gui_launcher.template_editor import TemplateEditor
 
 
 class StepCard(QFrame):
@@ -75,9 +77,12 @@ class ObsidianPanel(QFrame):
     browse_template_requested = pyqtSignal()
     browse_vault_requested = pyqtSignal()
     courses_reload_requested = pyqtSignal()
+    template_analysis_requested = pyqtSignal(str)  # Emits template path when analysis requested
+    template_analyzed = pyqtSignal(object)  # Emits TemplateAnalysisResult when complete
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._analysis_result = None  # Store completed analysis
         self._build_ui()
 
     def _build_ui(self):
@@ -130,6 +135,40 @@ class ObsidianPanel(QFrame):
         t_btn.setStyleSheet(self._btn_style())
         t_btn.clicked.connect(self._on_browse_template)
         s1_row.addWidget(t_btn)
+        
+        edit_btn = QPushButton("编辑")
+        edit_btn.setFixedHeight(34)
+        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_btn.setStyleSheet(self._btn_style())
+        edit_btn.clicked.connect(self._on_edit_template)
+        s1_row.addWidget(edit_btn)
+
+        analyze_btn = QPushButton("🔍 分析")
+        analyze_btn.setFixedHeight(34)
+        analyze_btn.setToolTip("AI 智能分析模板并优化生成配置")
+        analyze_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        analyze_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 0 12px;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
+            }
+        """)
+        analyze_btn.clicked.connect(self._on_analyze_template)
+        self.analyze_btn = analyze_btn
+        s1_row.addWidget(analyze_btn)
+        
         s1.add_widget(s1_row)
         outer.addWidget(s1)
 
@@ -172,6 +211,14 @@ class ObsidianPanel(QFrame):
         self.course_combo.currentTextChanged.connect(self._update_status)
         s3.add_widget(self.course_combo)
         outer.addWidget(s3)
+
+        # ── Step 4: Note Name ──
+        s4 = StepCard("4", "笔记名称", "自定义生成笔记的文件名（可选，默认使用 PDF 文件名）")
+        self.note_name_edit = QLineEdit()
+        self.note_name_edit.setPlaceholderText("如：第一章_量子力学基础（留空则使用 PDF 文件名）")
+        self.note_name_edit.setStyleSheet(self._input_style())
+        s4.add_widget(self.note_name_edit)
+        outer.addWidget(s4)
 
     # ── Style helpers ──
 
@@ -260,15 +307,71 @@ class ObsidianPanel(QFrame):
         t = self.template_edit.text().strip()
         v = self.vault_edit.text().strip()
         c = self.course_combo.currentText().strip()
+
+        # Update analyze button state
+        if hasattr(self, 'analyze_btn'):
+            self.analyze_btn.setEnabled(bool(t) and Path(t).exists())
+
         if t and v and c:
-            self.status_badge.setText("就绪")
-            self.status_badge.setStyleSheet(self._badge_style("ready"))
+            if self._analysis_result:
+                self.status_badge.setText("已分析 ✓")
+                self.status_badge.setStyleSheet(
+                    f"background-color: #27ae60; color: white; "
+                    f"border-radius: 4px; padding: 2px 10px; font-size: 11px; font-weight: 600;"
+                )
+            else:
+                self.status_badge.setText("就绪")
+                self.status_badge.setStyleSheet(self._badge_style("ready"))
         else:
             self.status_badge.setText("未配置")
             self.status_badge.setStyleSheet(self._badge_style("inactive"))
 
     def _on_browse_template(self):
         self.browse_template_requested.emit()
+
+    def _on_analyze_template(self):
+        """Trigger template analysis workflow."""
+        template_path = self.template_edit.text().strip()
+        if not template_path or not Path(template_path).exists():
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self,
+                "模板未找到",
+                "请先选择一个有效的模板文件，然后再进行分析。"
+            )
+            return
+
+        # Emit signal to parent (main window) to handle async analysis
+        self.template_analysis_requested.emit(template_path)
+
+    def set_analysis_result(self, result):
+        """Store and display analysis result.
+
+        Args:
+            result: TemplateAnalysisResult from TemplateAnalyzer
+        """
+        self._analysis_result = result
+        self._update_status()
+        self.template_analyzed.emit(result)
+
+    def get_analysis_result(self):
+        """Get stored analysis result."""
+        return self._analysis_result
+
+    def _on_edit_template(self):
+        template_path = self.template_edit.text().strip()
+        if template_path and Path(template_path).exists():
+            editor = TemplateEditor(Path(template_path), parent=self)
+            editor.exec()
+        elif template_path:
+            # File doesn't exist but path is provided
+            editor = TemplateEditor(Path(template_path), parent=self)
+            editor.exec()
+        else:
+            # No template selected, create new
+            editor = TemplateEditor(None, parent=self)
+            if editor.exec() and editor.template_path:
+                self.template_edit.setText(str(editor.template_path))
 
     def _on_browse_vault(self):
         self.browse_vault_requested.emit()
@@ -277,18 +380,22 @@ class ObsidianPanel(QFrame):
         self.courses_reload_requested.emit()
 
     def get_values(self):
-        """Return (template_path, course_name, vault_path)."""
+        """Return (template_path, course_name, vault_path, note_name, analysis_result)."""
         return (
             self.template_edit.text().strip(),
             self.course_combo.currentText().strip(),
             self.vault_edit.text().strip(),
+            self.note_name_edit.text().strip() or None,
+            self._analysis_result,  # New: include analysis result
         )
 
-    def set_values(self, *, template: str = "", vault: str = "", course: str = ""):
+    def set_values(self, *, template: str = "", vault: str = "", course: str = "", note_name: str = ""):
         self.template_edit.setText(template)
         self.vault_edit.setText(vault)
         if course:
             self.course_combo.setCurrentText(course)
+        if note_name:
+            self.note_name_edit.setText(note_name)
 
     def set_active(self, active: bool):
         self.setVisible(active)

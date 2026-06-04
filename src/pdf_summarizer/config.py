@@ -177,6 +177,41 @@ class ConfigManager:
 
         return config
 
+    def update_ai_config(self, provider: str, api_key: str, model: str,
+                          base_url: str = "", temperature: float = 0.7):
+        """Update AI configuration via a single method instead of direct attribute mutation.
+
+        Args:
+            provider: The AI provider name ('openai', 'claude', 'kimi', 'deepseek')
+            api_key: API key for the provider
+            model: Model name
+            base_url: Optional base URL override
+            temperature: Sampling temperature
+        """
+        settings = self.settings
+
+        if provider == "kimi":
+            object.__setattr__(settings, 'kimi_api_key', api_key)
+            object.__setattr__(settings, 'kimi_model', model)
+            if base_url:
+                object.__setattr__(settings, 'kimi_base_url', base_url)
+        elif provider == "openai":
+            object.__setattr__(settings, 'openai_api_key', api_key)
+            object.__setattr__(settings, 'openai_model', model)
+            if base_url:
+                object.__setattr__(settings, 'openai_base_url', base_url)
+        elif provider == "anthropic":
+            object.__setattr__(settings, 'anthropic_api_key', api_key)
+            object.__setattr__(settings, 'anthropic_model', model)
+        elif provider == "deepseek":
+            object.__setattr__(settings, 'deepseek_api_key', api_key)
+            object.__setattr__(settings, 'deepseek_model', model)
+            if base_url:
+                object.__setattr__(settings, 'deepseek_base_url', base_url)
+
+        object.__setattr__(settings, 'default_provider', provider)
+        object.__setattr__(settings, 'temperature', temperature)
+
     def get_output_dir(self) -> Path:
         """Get output directory path."""
         return Path(self.settings.output_directory).resolve()

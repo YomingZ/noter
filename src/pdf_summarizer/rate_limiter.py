@@ -126,6 +126,7 @@ class RateLimiter:
             if wait_time > 0:
                 self._total_wait_time += wait_time
                 logger.debug(f"Rate limit: waiting {wait_time:.2f}s")
+                time.sleep(wait_time)
 
             return wait_time
 

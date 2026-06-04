@@ -32,6 +32,8 @@ class ProcessingService:
         obsidian_template: Path | None = None,
         obsidian_course: str | None = None,
         obsidian_vault: Path | None = None,
+        obsidian_note_name: str | None = None,
+        obsidian_analysis=None,
     ):
         self.provider = provider
         self.output_format = output_format
@@ -39,7 +41,10 @@ class ProcessingService:
         self.obsidian_template = obsidian_template
         self.obsidian_course = obsidian_course
         self.obsidian_vault = obsidian_vault
+        self.obsidian_note_name = obsidian_note_name
+        self.obsidian_analysis = obsidian_analysis
         self._cancelled = False
+        self._ai_config: dict | None = None
 
     def cancel(self):
         self._cancelled = True
@@ -51,12 +56,14 @@ class ProcessingService:
             ai_config: dict with keys:
                 provider, api_key, model, base_url, temperature
         """
+        self._ai_config = ai_config  # Store the ai_config for later use
         provider = ai_config.get("provider", "kimi")
         api_key = ai_config.get("api_key", "")
 
         if not api_key:
             raise ValueError("未配置 API Key，请在设置中配置")
 
+        # Also set environment variables for compatibility
         os.environ["KIMI_API_KEY"] = api_key if provider == "kimi" else ""
         os.environ["OPENAI_API_KEY"] = api_key if provider == "openai" else ""
         os.environ["ANTHROPIC_API_KEY"] = api_key if provider == "anthropic" else ""
@@ -64,28 +71,9 @@ class ProcessingService:
 
         model = ai_config.get("model", "deepseek-chat")
         base_url = ai_config.get("base_url", "")
+        temperature = ai_config.get("temperature", 0.7)
 
-        if provider == "kimi":
-            config.kimi_api_key = api_key
-            config.kimi_model = model
-            if base_url:
-                config.kimi_base_url = base_url
-        elif provider == "openai":
-            config.openai_api_key = api_key
-            config.openai_model = model
-            if base_url:
-                config.openai_base_url = base_url
-        elif provider == "anthropic":
-            config.anthropic_api_key = api_key
-            config.anthropic_model = model
-        elif provider == "deepseek":
-            config.deepseek_api_key = api_key
-            config.deepseek_model = model
-            if base_url:
-                config.deepseek_base_url = base_url
-
-        config.default_provider = provider
-        config.temperature = ai_config.get("temperature", 0.7)
+        config.update_ai_config(provider, api_key, model, base_url, temperature)
 
     def process_one(self, file_path: Path) -> ProcessResult:
         """Process a single PDF file.
@@ -94,10 +82,16 @@ class ProcessingService:
         """
         file_path = Path(file_path)
         provider_enum = AIProvider(self.provider)
-
+        
+        # Create Summarizer with the stored ai_config
+        ai_config = self._ai_config or {}
         summarizer = Summarizer(
             provider=provider_enum,
             output_dir=self.output_dir,
+            api_key=ai_config.get('api_key'),
+            model=ai_config.get('model'),
+            base_url=ai_config.get('base_url'),
+            temperature=ai_config.get('temperature'),
         )
 
         result = summarizer.process(
@@ -106,6 +100,7 @@ class ProcessingService:
             template_path=self.obsidian_template,
             course_name=self.obsidian_course,
             vault_root=self.obsidian_vault,
+            output_name=self.obsidian_note_name,
         )
 
         return result

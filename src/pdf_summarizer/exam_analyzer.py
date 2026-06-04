@@ -73,7 +73,10 @@ class ExamQuestionAnalyzer:
     ]
 
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = data_dir or Path("./output/.exam_data")
+        if data_dir is None:
+            from pdf_summarizer.config import config
+            data_dir = config.ensure_output_dir() / ".exam_data"
+        self.data_dir = data_dir
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
         self.questions: Dict[str, ExamQuestion] = {}
@@ -107,20 +110,23 @@ class ExamQuestionAnalyzer:
 
     def _save_data(self):
         """Save data to disk."""
-        questions_file = self.data_dir / "questions.json"
-        kp_file = self.data_dir / "knowledge_points.json"
+        try:
+            questions_file = self.data_dir / "questions.json"
+            kp_file = self.data_dir / "knowledge_points.json"
 
-        with open(questions_file, 'w', encoding='utf-8') as f:
-            json.dump(
-                {q_id: q.__dict__ for q_id, q in self.questions.items()},
-                f, ensure_ascii=False, indent=2
-            )
+            with open(questions_file, 'w', encoding='utf-8') as f:
+                json.dump(
+                    {q_id: q.__dict__ for q_id, q in self.questions.items()},
+                    f, ensure_ascii=False, indent=2
+                )
 
-        with open(kp_file, 'w', encoding='utf-8') as f:
-            json.dump(
-                {kp_id: kp.__dict__ for kp_id, kp in self.knowledge_points.items()},
-                f, ensure_ascii=False, indent=2
-            )
+            with open(kp_file, 'w', encoding='utf-8') as f:
+                json.dump(
+                    {kp_id: kp.__dict__ for kp_id, kp in self.knowledge_points.items()},
+                    f, ensure_ascii=False, indent=2
+                )
+        except Exception as e:
+            logger.error("Failed to save exam data: %s", e)
 
     def extract_questions_from_text(
         self,

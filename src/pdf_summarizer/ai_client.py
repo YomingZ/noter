@@ -33,6 +33,7 @@ class BaseAIClient(ABC):
         self.provider = provider
         self.temperature = kwargs.get("temperature", 0.3)
         self.max_tokens = kwargs.get("max_tokens", 4096)
+        self.request_timeout = kwargs.get("request_timeout", 120)
         self._rate_limiter = get_rate_limiter()
         self._cache = get_cache()
 
@@ -122,6 +123,16 @@ class BaseAIClient(ABC):
         finally:
             self._rate_limiter.release(self.provider, estimated_tokens)
 
+    def enable_cache(self, enabled: bool = True):
+        """Enable or disable response caching."""
+        self._cache_enabled = enabled
+        if not enabled:
+            self._cache = None
+        else:
+            if self._cache is None:
+                from pdf_summarizer.cache import CacheManager
+                self._cache = CacheManager()
+
     def _validate_api_key(self):
         """Validate that API key is configured."""
         if not self.api_key:
@@ -149,7 +160,11 @@ class OpenAIClient(BaseAIClient):
         """Generate text using OpenAI API."""
         from openai import OpenAI
 
-        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=self.request_timeout,
+        )
 
         logger.info(f"Calling OpenAI API with model: {self.model}")
 
@@ -171,7 +186,11 @@ class OpenAIClient(BaseAIClient):
         """Generate text with multimodal input using OpenAI API."""
         from openai import OpenAI
 
-        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=self.request_timeout,
+        )
 
         logger.info(f"Calling OpenAI multimodal API with model: {self.model}")
 
@@ -201,7 +220,10 @@ class ClaudeClient(BaseAIClient):
         """Generate text using Anthropic Claude API."""
         from anthropic import Anthropic
 
-        client = Anthropic(api_key=self.api_key)
+        client = Anthropic(
+            api_key=self.api_key,
+            timeout=self.request_timeout,
+        )
 
         logger.info(f"Calling Claude API with model: {self.model}")
 
@@ -222,7 +244,10 @@ class ClaudeClient(BaseAIClient):
         """Generate text with multimodal input using Claude API."""
         from anthropic import Anthropic
 
-        client = Anthropic(api_key=self.api_key)
+        client = Anthropic(
+            api_key=self.api_key,
+            timeout=self.request_timeout,
+        )
 
         logger.info(f"Calling Claude multimodal API with model: {self.model}")
 
@@ -258,7 +283,11 @@ class KimiClient(BaseAIClient):
         """Generate text using Kimi API (OpenAI-compatible)."""
         from openai import OpenAI
 
-        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=self.request_timeout,
+        )
 
         logger.info(f"Calling Kimi API with model: {self.model}")
 
@@ -303,7 +332,11 @@ class DeepSeekClient(BaseAIClient):
     def _call_api(self, system_prompt: str, user_prompt: str) -> str:
         from openai import OpenAI
 
-        client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        client = OpenAI(
+            api_key=self.api_key,
+            base_url=self.base_url,
+            timeout=self.request_timeout,
+        )
 
         logger.info(f"Calling DeepSeek API with model: {self.model}")
 
@@ -361,25 +394,36 @@ def create_client(provider: AIProvider, **kwargs) -> BaseAIClient:
     Args:
         provider: AI provider enum value
         **kwargs: Additional arguments (api_key, model, temperature, etc.)
+            - api_key: API key for the provider (REQUIRED)
+            - model: Model name to use
+            - base_url: Base URL for API calls (if supported)
+            - temperature: Sampling temperature
+            - max_tokens: Maximum tokens to generate
 
     Returns:
         Configured AI client instance
     """
-    ai_config = config.get_ai_config(provider)
-    ai_config.update(kwargs)
-
+    # First, use kwargs directly if available, otherwise fall back to config
     if provider not in PROVIDER_CONFIGS:
         raise ValueError(f"Unsupported AI provider: {provider}")
 
     provider_config = PROVIDER_CONFIGS[provider]
     client_class = provider_config['client_class']
 
-    # Build client arguments
+    # Build client arguments - prioritize kwargs over config
+    ai_config = config.get_ai_config(provider)
+    ai_config.update(kwargs)
+    
+    # Ensure required parameters
+    api_key = ai_config.get('api_key', '')
+    if not api_key:
+        raise ValueError(f"API key not configured for {provider.value}. Please provide it as a keyword argument.")
+
     client_kwargs = {
-        'api_key': ai_config['api_key'],
-        'model': ai_config['model'],
-        'temperature': ai_config['temperature'],
-        'max_tokens': ai_config['max_tokens'],
+        'api_key': api_key,
+        'model': ai_config.get('model', provider_config['default_model']),
+        'temperature': ai_config.get('temperature', 0.3),
+        'max_tokens': ai_config.get('max_tokens', 4096),
     }
 
     # Add base_url if supported
@@ -422,9 +466,8 @@ def generate_summary(
 
     client = create_client(provider)
 
-    # Temporarily disable cache if requested
     if not use_cache:
-        client._cache = None
+        client.enable_cache(False)
 
     return client.generate(system, user)
 
@@ -466,7 +509,7 @@ def generate_multimodal_summary(
             )
 
     if not use_cache:
-        client._cache = None
+        client.enable_cache(False)
 
     return client.generate_multimodal(system, content_parts)
 

@@ -5,7 +5,9 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
+
+from pdf_summarizer.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -14,36 +16,41 @@ class CacheManager:
     """Manages caching of AI API responses."""
 
     def __init__(self, cache_dir: Optional[Path] = None, max_age_hours: int = 24):
-        self.cache_dir = cache_dir or Path("./output/.cache")
+        self.cache_dir = cache_dir or self._default_cache_dir()
         self.max_age_hours = max_age_hours
         self._ensure_cache_dir()
+
+    @staticmethod
+    def _default_cache_dir() -> Path:
+        """Get the default cache directory from config output dir."""
+        return config.ensure_output_dir() / ".cache"
 
     def _ensure_cache_dir(self):
         """Ensure cache directory exists."""
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def _generate_key(self, content: str, provider: str, model: str) -> str:
-        """Generate a unique cache key for the content."""
-        hash_input = f"{provider}:{model}:{content}"
-        return hashlib.sha256(hash_input.encode('utf-8')).hexdigest()[:16]
+    def _generate_key(self, prompt: str, provider: str, model: str) -> str:
+        """Generate a unique cache key for the prompt."""
+        hash_input = f"{provider}:{model}:{prompt}"
+        return hashlib.sha256(hash_input.encode('utf-8')).hexdigest()
 
     def _get_cache_path(self, key: str) -> Path:
         """Get cache file path for a key."""
         return self.cache_dir / f"{key}.json"
 
-    def get(self, content: str, provider: str, model: str) -> Optional[str]:
+    def get(self, prompt: str, provider: str, model: str) -> Optional[str]:
         """
         Get cached response if available and not expired.
 
         Args:
-            content: The input content
+            prompt: The full prompt (system + user) used as cache key
             provider: AI provider name
             model: Model name
 
         Returns:
             Cached response or None if not found/expired
         """
-        key = self._generate_key(content, provider, model)
+        key = self._generate_key(prompt, provider, model)
         cache_path = self._get_cache_path(key)
 
         if not cache_path.exists():
@@ -53,40 +60,38 @@ class CacheManager:
             with open(cache_path, 'r', encoding='utf-8') as f:
                 cached = json.load(f)
 
-            # Check expiration
             cached_time = datetime.fromisoformat(cached['timestamp'])
             age_hours = (datetime.now() - cached_time).total_seconds() / 3600
 
             if age_hours > self.max_age_hours:
-                logger.debug(f"Cache expired for key {key}")
+                logger.debug(f"Cache expired for key {key[:16]}")
                 return None
 
-            logger.info(f"Cache hit for key {key}")
+            logger.info(f"Cache hit for key {key[:16]}")
             return cached['response']
 
         except Exception as e:
             logger.warning(f"Failed to read cache: {e}")
             return None
 
-    def set(self, content: str, provider: str, model: str, response: str):
+    def set(self, prompt: str, provider: str, model: str, response: str):
         """
         Save response to cache.
 
         Args:
-            content: The input content
+            prompt: The full prompt (system + user) used as cache key
             provider: AI provider name
             model: Model name
             response: The AI response to cache
         """
-        key = self._generate_key(content, provider, model)
+        key = self._generate_key(prompt, provider, model)
         cache_path = self._get_cache_path(key)
 
         try:
             cached = {
-                'key': key,
+                'key': key[:16],
                 'provider': provider,
                 'model': model,
-                'content_hash': hashlib.sha256(content.encode('utf-8')).hexdigest()[:8],
                 'response': response,
                 'timestamp': datetime.now().isoformat(),
             }
@@ -94,7 +99,7 @@ class CacheManager:
             with open(cache_path, 'w', encoding='utf-8') as f:
                 json.dump(cached, f, ensure_ascii=False, indent=2)
 
-            logger.debug(f"Cached response for key {key}")
+            logger.debug(f"Cached response for key {key[:16]}")
 
         except Exception as e:
             logger.warning(f"Failed to write cache: {e}")

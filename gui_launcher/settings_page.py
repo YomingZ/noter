@@ -9,10 +9,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont
 
 from gui_launcher.theme import Theme
-from gui_launcher.settings_manager import SettingsManager, CONFIG_DIR, SETTINGS_FILE
+from gui_launcher.settings_manager import SettingsManager, settings_manager, CONFIG_DIR, SETTINGS_FILE
 from gui_launcher.widget_factory import WidgetFactory
-
-settings_manager = SettingsManager()
 
 
 class SettingsPage(QWidget):
@@ -168,7 +166,7 @@ class SettingsPage(QWidget):
         ai_group, ai_layout = self.create_group("🤖 AI 配置")
         ai_layout.setSpacing(14)
 
-        self.provider_combo = self.create_combo(["Kimi (Moonshot)", "OpenAI", "Anthropic", "自定义"])
+        self.provider_combo = self.create_combo(["Kimi (Moonshot)", "OpenAI", "Anthropic", "DeepSeek", "自定义"])
         ai_layout.addLayout(self._create_row("提供商", self.provider_combo, connect=self.on_provider_changed))
 
         key_widget = QWidget()
@@ -385,7 +383,7 @@ class SettingsPage(QWidget):
     # ── Handlers ──
 
     def on_provider_changed(self, index):
-        providers = ["kimi", "openai", "anthropic", "custom"]
+        providers = ["kimi", "openai", "anthropic", "deepseek", "custom"]
         provider = providers[index] if index < len(providers) else "kimi"
         models = settings_manager.get_models_for_provider(provider)
         current_idx = self.model_combo.currentIndex()
@@ -396,6 +394,7 @@ class SettingsPage(QWidget):
             "kimi": "https://api.moonshot.cn",
             "openai": "https://api.openai.com",
             "anthropic": "https://api.anthropic.com",
+            "deepseek": "https://api.deepseek.com",
             "custom": "",
         }
         current_url = self.base_url_input.text().strip()
@@ -436,34 +435,64 @@ class SettingsPage(QWidget):
                     main_window.apply_theme()
 
     def save_current_profile(self):
+        """保存当前配置为新配置文件"""
         name, ok = QInputDialog.getText(self, "保存配置", "请输入配置名称:")
-        if ok and name:
-            name = name.strip()
-            if name and name != "默认配置":
-                self.save_settings()
-                settings_manager.save_profile(name)
-                current = self.profile_combo.currentText()
-                self.profile_combo.clear()
-                self.profile_combo.addItems(settings_manager.get_profiles())
-                self.profile_combo.setCurrentText(name)
+        if not ok or not name:
+            return
+
+        name = name.strip()
+        if not name:
+            QMessageBox.warning(self, "输入错误", "配置名称不能为空")
+            return
+
+        if name == "默认配置":
+            QMessageBox.warning(self, "保存失败", "不能覆盖默认配置")
+            return
+
+        try:
+            self.save_settings()
+            settings_manager.save_profile(name)
+
+            current = self.profile_combo.currentText()
+            self.profile_combo.clear()
+            self.profile_combo.addItems(settings_manager.get_profiles())
+            self.profile_combo.setCurrentText(name)
+
+            QMessageBox.information(self, "保存成功", f"配置「{name}」已保存")
+
+        except PermissionError as e:
+            QMessageBox.critical(self, "保存失败", f"没有写入权限：\n{e}")
+        except OSError as e:
+            QMessageBox.critical(self, "保存失败", f"文件操作失败：\n{e}")
+        except Exception as e:
+            QMessageBox.critical(self, "保存失败", f"未知错误：\n{e}")
 
     def delete_current_profile(self):
+        """删除当前配置文件"""
         current = self.profile_combo.currentText()
         if current == "默认配置":
             QMessageBox.warning(self, "无法删除", "不能删除默认配置")
             return
+
         reply = QMessageBox.question(
             self, "确认删除",
             f"确定要删除配置「{current}」吗?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
+
         if reply == QMessageBox.StandardButton.Yes:
-            if settings_manager.delete_profile(current):
-                self.profile_combo.clear()
-                self.profile_combo.addItems(settings_manager.get_profiles())
-                self.profile_combo.setCurrentText("默认配置")
-                settings_manager.load_profile("默认配置")
-                self.load_settings()
+            try:
+                if settings_manager.delete_profile(current):
+                    self.profile_combo.clear()
+                    self.profile_combo.addItems(settings_manager.get_profiles())
+                    self.profile_combo.setCurrentText("默认配置")
+                    settings_manager.load_profile("默认配置")
+                    self.load_settings()
+                    QMessageBox.information(self, "删除成功", f"配置「{current}」已删除")
+                else:
+                    QMessageBox.warning(self, "删除失败", f"无法删除配置「{current}」")
+            except Exception as e:
+                QMessageBox.critical(self, "删除失败", f"发生错误：\n{e}")
 
     def load_settings(self):
         """Load settings from SettingsManager into all controls."""
@@ -471,7 +500,7 @@ class SettingsPage(QWidget):
         self.delete_profile_btn.setEnabled(settings_manager.current_profile != "默认配置")
 
         provider = settings_manager.get("ai", "provider", default="kimi")
-        provider_map = {"kimi": 0, "openai": 1, "anthropic": 2, "custom": 3}
+        provider_map = {"kimi": 0, "openai": 1, "anthropic": 2, "deepseek": 3, "custom": 4}
         self.provider_combo.setCurrentIndex(provider_map.get(provider, 0))
         self.api_key_input.setText(settings_manager.get("ai", "api_key", default=""))
         self.base_url_input.setText(settings_manager.get("ai", "base_url", default=""))
@@ -521,10 +550,13 @@ class SettingsPage(QWidget):
         """Save all control values to SettingsManager."""
         settings_manager.current_profile = self.profile_combo.currentText()
 
-        provider_map = {0: "kimi", 1: "openai", 2: "anthropic", 3: "custom"}
-        settings_manager.set(
-            "ai", "provider", provider_map[self.provider_combo.currentIndex()]
-        )
+        provider_map = {0: "kimi", 1: "openai", 2: "anthropic", 3: "deepseek", 4: "custom"}
+        provider_idx = self.provider_combo.currentIndex()
+        if provider_idx in provider_map:
+            settings_manager.set("ai", "provider", provider_map[provider_idx])
+        else:
+            settings_manager.set("ai", "provider", "kimi")
+
         settings_manager.set("ai", "api_key", self.api_key_input.text())
         settings_manager.set("ai", "model", self.model_combo.currentText())
         settings_manager.set("ai", "base_url", self.base_url_input.text())
@@ -563,9 +595,15 @@ class SettingsPage(QWidget):
 
     def _on_apply_clicked(self):
         """应用按钮：保存设置，通知主界面同步"""
-        self.save_settings()
-        self.applyClicked.emit()
+        try:
+            self.save_settings()
+            self.applyClicked.emit()
+        except Exception as e:
+            QMessageBox.critical(self, "保存失败", f"应用设置时发生错误：\n{e}")
 
     def _on_back_clicked(self):
         """返回按钮：先保存设置，再发射信号"""
-        self.save_settings()
+        try:
+            self.save_settings()
+        except Exception as e:
+            QMessageBox.warning(self, "保存警告", f"保存设置时发生错误：\n{e}")

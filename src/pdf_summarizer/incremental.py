@@ -33,7 +33,10 @@ class IncrementalProcessor:
     """
 
     def __init__(self, state_dir: Optional[Path] = None):
-        self.state_dir = state_dir or Path("./output/.state")
+        if state_dir is None:
+            from pdf_summarizer.config import config
+            state_dir = config.ensure_output_dir() / ".state"
+        self.state_dir = state_dir
         self.state_file = self.state_dir / "processed_files.json"
         self._records: dict[str, FileRecord] = {}
         self._load_state()
