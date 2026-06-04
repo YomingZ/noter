@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import List, Optional
 import json
 import base64
+import io
+import webbrowser
+
+# 修复终端中文乱码 (P0-3)
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -173,6 +179,12 @@ class ModernMainWindow(QMainWindow):
 
         # 初始化模板分析集成系统
         self._setup_template_analysis_system()
+
+        # P0-1: 首次使用引导弹窗
+        self._show_welcome_if_first_run()
+
+        # P0-2: 未配置 API Key 时在启动后提示
+        QTimer.singleShot(500, self._check_api_key_and_prompt)
 
     def setup_window(self):
         from PyQt6.QtGui import QIcon
@@ -360,6 +372,17 @@ class ModernMainWindow(QMainWindow):
 
         action_layout.addStretch()
 
+        # P2-14: 帮助按钮
+        help_btn = QPushButton("❓")
+        help_btn.setFixedSize(36, 36)
+        help_btn.setToolTip("帮助 / 使用说明")
+        help_btn.setStyleSheet(f"""
+            QPushButton {{ background-color: transparent; color: {Theme.get('text_secondary')}; border: 1px solid {Theme.get('border_light')}; border-radius: 4px; font-size: 16px; }}
+            QPushButton:hover {{ background-color: {Theme.get('bg_tertiary')}; border-color: {Theme.ACCENT_PRIMARY}; }}
+        """)
+        help_btn.clicked.connect(self._show_help_dialog)
+        action_layout.addWidget(help_btn)
+
         self.cancel_btn = QPushButton("取消")
         self.cancel_btn.setFixedSize(80, 36)
         self.cancel_btn.setStyleSheet(f"""
@@ -415,15 +438,28 @@ class ModernMainWindow(QMainWindow):
         self._animate_page_switch(1)
 
     def _animate_page_switch(self, index: int):
-        """Smooth crossfade page transition using window opacity."""
+        """P2-13: 页面滑动切换动画"""
         if self.pages.currentIndex() == index:
             return
-        # Quick opacity fade for smooth feel
-        self._page_anim = QPropertyAnimation(self, b"windowOpacity")
-        self._page_anim.setDuration(120)
-        self._page_anim.setStartValue(0.92)
-        self._page_anim.setEndValue(1.0)
+        # 使用 QPropertyAnimation 对 pages 做位置偏移
+        current_w = self.pages.currentWidget()
+        next_w = self.pages.widget(index)
+        if not current_w or not next_w:
+            self.pages.setCurrentIndex(index)
+            return
+
+        direction = 1 if index > self.pages.currentIndex() else -1
+        offset = self.width() * direction
+
+        next_w.setGeometry(0, 0, self.pages.width(), self.pages.height())
+        next_w.move(offset, 0)
+
+        self._page_anim = QPropertyAnimation(self.pages, b"pos")
+        self._page_anim.setDuration(250)
+        self._page_anim.setStartValue(QPoint(-offset, 0))
+        self._page_anim.setEndValue(QPoint(0, 0))
         self._page_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
         self.pages.setCurrentIndex(index)
         self._page_anim.start()
 
@@ -622,6 +658,184 @@ class ModernMainWindow(QMainWindow):
         mapped = provider_map.get(provider, "kimi")
         self.provider_combo.setCurrentText(mapped)
 
+        # P1-6: Vault 路径自动同步到 Obsidian 面板
+        vault_default = settings_manager.get("storage", "obsidian_vault_default", default="")
+        if vault_default and hasattr(self, 'obsidian_panel'):
+            current_vault = self.obsidian_panel.vault_edit.text().strip()
+            if not current_vault:
+                self.obsidian_panel.vault_edit.setText(vault_default)
+
+    # ═══════════════════════════════════════════
+    # P0-1: 首次使用引导弹窗
+    # ═══════════════════════════════════════════
+    def _show_welcome_if_first_run(self):
+        """首次运行时显示欢迎引导弹窗。"""
+        first_run = settings_manager.get("app", "first_run_completed", default=False)
+        if first_run:
+            return
+
+        from PyQt6.QtWidgets import QDialog, QTextEdit, QVBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("🚀 欢迎使用 PDF 笔记生成器 (Noter)")
+        dialog.setMinimumSize(520, 420)
+        dialog.resize(540, 440)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(16)
+
+        title = QLabel("🚀 欢迎使用 Noter！")
+        title.setStyleSheet("font-size: 20px; font-weight: 700; color: #2c3e50;")
+        layout.addWidget(title)
+
+        guide_text = QTextEdit()
+        guide_text.setReadOnly(True)
+        guide_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 6px;
+                padding: 12px;
+                font-size: 13px;
+                color: #333;
+            }
+        """)
+        guide_text.setHtml("""
+        <h3>📋 三步快速上手</h3>
+        <ol>
+        <li><b>拖入 PDF 文件</b> — 将课件 PDF 拖入上方区域，支持批量处理</li>
+        <li><b>配置 AI</b> — 点击「⚙️ 设置」填入 API Key（支持 Kimi / OpenAI / Claude / DeepSeek）</li>
+        <li><b>选择格式生成</b> — 选择输出格式，点击「开始生成」即可</li>
+        </ol>
+
+        <h3>📝 Obsidian 笔记模式</h3>
+        <p>将「输出格式」切换为 <b>Obsidian</b>，可配置模板、Vault 路径和课程名称，
+        直接输出到您的 Obsidian 知识库中。</p>
+
+        <h3>🔍 模板分析</h3>
+        <p>在 Obsidian 模式下选择 .md 模板后，点击「<b>🔍 分析</b>」按钮，
+        AI 会自动识别模板风格并优化生成提示词。</p>
+
+        <hr>
+        <p style="color: #666; font-size: 12px;">
+        💡 提示：所有设置可在「⚙️ 设置」页面中随时修改和保存。</p>
+        """)
+        layout.addWidget(guide_text, stretch=1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        got_it_btn = QPushButton("👌 我知道了，开始使用")
+        got_it_btn.setFixedSize(180, 36)
+        got_it_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #3498db, stop:1 #2980b9);
+                color: white; border: none; border-radius: 4px;
+                font-size: 13px; font-weight: 600;
+            }
+            QPushButton:hover { background-color: #2471a3; }
+        """)
+        got_it_btn.clicked.connect(dialog.accept)
+        btn_row.addWidget(got_it_btn)
+        layout.addLayout(btn_row)
+
+        dialog.exec()
+
+        # 标记已完成首次引导
+        settings_manager.set("app", "first_run_completed", True)
+        settings_manager.save()
+
+    # ═══════════════════════════════════════════
+    # P0-2: 检测 API Key 并提示
+    # ═══════════════════════════════════════════
+    def _check_api_key_and_prompt(self):
+        """检测未配置 API Key 时弹出提示。"""
+        if settings_manager.has_api_key():
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "🔑 配置 API Key",
+            "检测到您还没有配置 AI API Key。\n\n"
+            "需要 AI 服务来生成笔记，请先配置 API Key。\n\n"
+            "是否现在前往设置页面进行配置？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.show_settings_page()
+            # 在设置页面上高亮 API Key 输入框
+            self.settings_page.api_key_input.setFocus()
+
+    # ═══════════════════════════════════════════
+    # P2-14: 帮助按钮
+    # ═══════════════════════════════════════════
+    def _show_help_dialog(self):
+        """显示帮助信息弹窗。"""
+        from PyQt6.QtWidgets import QDialog, QTextEdit, QVBoxLayout
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("❓ 帮助 - Noter 使用说明")
+        dialog.setMinimumSize(480, 380)
+        dialog.resize(500, 400)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        help_text = QTextEdit()
+        help_text.setReadOnly(True)
+        help_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #e9ecef;
+                border-radius: 6px;
+                padding: 12px;
+                font-size: 13px;
+                color: #333;
+            }
+        """)
+        help_text.setHtml("""
+        <h3>❓ 常见问题</h3>
+
+        <p><b>Q: 需要什么 API Key？</b></p>
+        <p>支持 Kimi / OpenAI / Claude / DeepSeek，在「⚙️ 设置」中配置。</p>
+
+        <p><b>Q: 支持哪些输出格式？</b></p>
+        <p>Word (.docx)、Markdown (.md)、HTML、Obsidian 笔记。</p>
+
+        <p><b>Q: 如何使用模板分析功能？</b></p>
+        <p>选择 Obsidian 格式 → 选择 .md 模板 → 点击「🔍 分析」按钮。</p>
+
+        <p><b>Q: 批量处理支持多少文件？</b></p>
+        <p>最多支持同时处理 50 个 PDF 文件。</p>
+
+        <p><b>Q: 如何修改输出目录？</b></p>
+        <p>在「⚙️ 设置」→「存储设置」中修改「输出目录」。</p>
+
+        <hr>
+        <p style="color: #666; font-size: 12px;">
+        🔗 更多信息请访问 GitHub 仓库</p>
+        """)
+        layout.addWidget(help_text, stretch=1)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("关闭")
+        close_btn.setFixedSize(90, 34)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db; color: white;
+                border: none; border-radius: 4px; font-size: 13px;
+            }
+            QPushButton:hover { background-color: #2980b9; }
+        """)
+        close_btn.clicked.connect(dialog.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        dialog.exec()
+
     def on_files_dropped(self, files: List[Path]):
         for f in files:
             self.file_list.add_file(f)
@@ -648,12 +862,12 @@ class ModernMainWindow(QMainWindow):
         self.cancel_btn.setEnabled(True)
         self.statusBar().showMessage("🚀 开始处理...", 3000)
 
-        # 获取输出目录（使用用户配置的或默认的 notes 目录）
+        # 获取输出目录（P2-11: 未配置时默认输出到桌面）
         output_folder = settings_manager.get("storage", "output_folder", default="")
         if output_folder:
             output_dir = Path(output_folder)
         else:
-            output_dir = SCRIPT_DIR / "notes"
+            output_dir = Path.home() / "Desktop" / "Noter_Notes"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Obsidian 模式参数
@@ -686,11 +900,17 @@ class ModernMainWindow(QMainWindow):
         self.worker.start()
 
     def cancel_processing(self):
+        """P2-10: 取消按钮带视觉反馈"""
         if hasattr(self, 'worker') and self.worker:
+            self.cancel_btn.setEnabled(False)
+            self.cancel_btn.setText("⏹ 正在取消...")
+            self.log_panel.append_log("⏹ 正在取消处理...", "info")
             self.worker.cancel()
-            self.worker.wait(1000)  # 等待1秒
+            self.worker.wait(1000)
             if self.worker.isRunning():
                 self.worker.terminate()
+            self.cancel_btn.setText("取消")
+            self.log_panel.append_log("⏹ 已取消处理", "info")
 
     def on_progress(self, file_path: Path, progress: int, status: str):
         self.file_list.update_card_status(file_path, status, progress)
@@ -716,10 +936,20 @@ class ModernMainWindow(QMainWindow):
         self.log_panel.append_log(message, level)
 
         output_folder = settings_manager.get("storage", "output_folder", default="")
-        output_dir = Path(output_folder) if output_folder else SCRIPT_DIR / "notes"
+        output_dir = Path(output_folder) if output_folder else Path.home() / "Desktop" / "Noter_Notes"
         self.log_panel.append_log(f"文件保存位置: {output_dir}", "info")
 
-        if not success:
+        # P1-7: 处理完成弹窗通知
+        if success:
+            reply = QMessageBox.information(
+                self,
+                "✅ 处理完成",
+                f"{message}\n\n📂 文件已保存至:\n{output_dir}\n\n是否打开输出目录查看？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                os.startfile(output_dir)
+        else:
             log_file = output_dir / "error.log"
             if log_file.exists():
                 self.log_panel.append_log(f"详细错误信息请查看: {log_file}", "info")

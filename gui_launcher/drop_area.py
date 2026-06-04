@@ -201,12 +201,23 @@ class DropArea(QFrame):
         self.update()
 
         files = []
+        non_pdf_count = 0
         for url in event.mimeData().urls():
             path = Path(url.toLocalFile())
             if path.is_file() and path.suffix.lower() == '.pdf':
                 files.append(path)
             elif path.is_dir():
                 files.extend(path.glob('*.pdf'))
+            elif path.is_file():
+                non_pdf_count += 1
+
+        # P2-12: 拖入非 PDF 文件时给出提示
+        if non_pdf_count > 0:
+            self.sub_text.setText(f"⚠️ 已忽略 {non_pdf_count} 个非 PDF 文件（仅支持 .pdf）")
+            QTimer.singleShot(3000, lambda: self.sub_text.setText(
+                "或点击选择文件  ·  支持批量处理" if not files else
+                "再次拖拽或点击可添加更多文件"
+            ))
 
         # Enforce limit
         if len(files) > self.FILE_LIMIT:

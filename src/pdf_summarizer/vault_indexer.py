@@ -110,8 +110,8 @@ class VaultIndexer:
             rel_path = f"{prefix}{current_dir.name}" if prefix else current_dir.name
             course_name = current_dir.name
             if course_name in mapping:
-                logger.warning(
-                    "Duplicate course name '%s' at '%s' and '%s'",
+                logger.info(
+                    "课程名重复: '%s' 同时存在于 '%s' 和 '%s'，已自动跳过后者",
                     course_name, mapping[course_name], rel_path
                 )
             else:

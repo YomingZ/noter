@@ -145,7 +145,10 @@ class ObsidianPanel(QFrame):
 
         analyze_btn = QPushButton("🔍 分析")
         analyze_btn.setFixedHeight(34)
-        analyze_btn.setToolTip("AI 智能分析模板并优化生成配置")
+        analyze_btn.setToolTip("AI 智能分析模板并优化生成配置\n\n"
+                               "分析模板风格、检测缺失特征、\n"
+                               "生成个性化提示词，提升笔记质量\n\n"
+                               "💡 提示：请先选择模板文件后再点击")
         analyze_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         analyze_btn.setStyleSheet("""
             QPushButton {
@@ -398,7 +401,26 @@ class ObsidianPanel(QFrame):
             self.note_name_edit.setText(note_name)
 
     def set_active(self, active: bool):
-        self.setVisible(active)
+        """P1-4: Obsidian 面板动画展开/收起"""
+        if active == self.isVisible():
+            return
+        if active:
+            self.show()
+            self.raise_()
+            # 展开动画：使用 QGraphicsOpacityEffect
+            from PyQt6.QtCore import QPropertyAnimation, QEasingCurve
+            from PyQt6.QtWidgets import QGraphicsOpacityEffect
+            self._opacity_effect = QGraphicsOpacityEffect()
+            self._opacity_effect.setOpacity(0.0)
+            self.setGraphicsEffect(self._opacity_effect)
+            self._opacity_anim = QPropertyAnimation(self._opacity_effect, b"opacity")
+            self._opacity_anim.setDuration(200)
+            self._opacity_anim.setStartValue(0.0)
+            self._opacity_anim.setEndValue(1.0)
+            self._opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self._opacity_anim.start()
+        else:
+            self.hide()
 
     def populate_courses(self, courses: list[str]):
         """Replace combo items while preserving current selection."""

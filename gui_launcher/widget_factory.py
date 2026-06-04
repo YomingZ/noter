@@ -272,10 +272,10 @@ class WidgetFactory:
                 QPushButton {{
                     background: {Theme.gradient_accent()};
                     color: white;
-                    border: none;
+                    border: 2px solid {Theme.ACCENT_PRIMARY_DARK};
                     border-radius: {radius};
                     font-size: 12px;
-                    font-weight: 600;
+                    font-weight: 700;
                 }}
             """
         return f"""
@@ -285,6 +285,7 @@ class WidgetFactory:
                 border: 1px solid {Theme.get('border_light')};
                 border-radius: {radius};
                 font-size: 12px;
+                font-weight: 400;
             }}
             QPushButton:hover {{
                 background-color: {Theme.get('surface_2')};
